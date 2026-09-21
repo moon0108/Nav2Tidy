@@ -23,5 +23,9 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    devices:
+      # nvidia runtime injects card2/renderD129 only; without the Intel node Mesa
+      # fails to load iris and the Gazebo GUI drops to software rendering.
+      - /dev/dri:/dev/dri
     stdin_open: true
     tty: true
