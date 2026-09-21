@@ -350,6 +350,11 @@ class MppiController(Node):
                 'x': round(x[0], 4), 'y': round(x[1], 4), 'theta': round(x[2], 4),
                 'vx': round(u[0], 4), 'vy': round(u[1], 4), 'wz': round(u[2], 4),
                 'dist_to_goal': round(d_goal, 4),
+                # Effective sample count, 1..K. mppi.py: at lam = 0.5 this
+                # collapses to ~1 and the update stops being "average the good
+                # ones" and becomes "pick one noisy rollout", which is what a
+                # wobbling base looks like. Logged so the diagnosis is a number.
+                'eta': round(mppi.last_eta, 3),
             })
             rate.sleep()
 
