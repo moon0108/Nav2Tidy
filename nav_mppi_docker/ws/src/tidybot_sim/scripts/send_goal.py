@@ -27,6 +27,10 @@ from nav import scene
 GOAL_THETA = 0.0       # RunConfig.goal_theta; SmacPlanner2D emits no orientation
 
 
+def yaw_of(q):
+    return math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y ** 2 + q.z ** 2))
+
+
 def teleport(name, world='tidy'):
     """Drop the robot at the scenario's start pose without restarting Gazebo.
 
