@@ -1,0 +1,5 @@
+nav_mppi_docker/ws/build/
+nav_mppi_docker/ws/install/
+nav_mppi_docker/ws/log/
+__pycache__/
+*.pyc

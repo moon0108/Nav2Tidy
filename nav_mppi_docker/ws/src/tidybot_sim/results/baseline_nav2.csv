@@ -1,0 +1,5 @@
+scenario,reached,status,time_s,goal_x,goal_y
+clutter,1,4,14.37,8.9,8.9
+corridor,1,4,21.4,1.0,8.8
+doorway,1,4,19.8,5.0,2.0
+utrap,1,4,15.13,8.5,4.0

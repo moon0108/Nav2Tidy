@@ -1,0 +1,117 @@
+<?xml version="1.0"?>
+<!-- TidyBot++ base, simulation only. Dimensions read off the tidybot2 repo:
+       body box      bumper.stl bbox, 0.4814 x 0.4814 x 0.2984 (z 0.0266 .. 0.3250)
+       caster origin constants.py h_x, h_y = +-0.190150, +-0.170150
+       mass          models/stanford_tidybot/base.xml, 60 kg
+     PLACEHOLDER (not in tidybot2 - the real robot carries RGB-D, no 2D lidar):
+       the whole lidar_link pose and every <lidar> figure below.
+     The arm is not modelled: this package only ever drives the base. -->
+<robot name="tidybot">
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.1758"/>
+      <mass value="60.0"/>
+      <!-- Solid box about the body bbox. base.xml's diaginertia="0.001 0.001 0.001"
+           is a MuJoCo position-servo convenience; at 60 kg it makes Gazebo explode. -->
+      <inertia ixx="1.6039" iyy="1.6039" izz="2.3175" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+
+    <visual>
+      <origin xyz="0 0 0.1758"/>
+      <geometry><box size="0.4814 0.4814 0.2984"/></geometry>
+      <material name="tidybot_gray"><color rgba="0.62 0.65 0.65 1"/></material>
+    </visual>
+
+    <!-- Body box stops at z = 0.0266, the measured ground clearance; the four
+         spheres bridge that gap so the base rests on them and not on an edge. -->
+    <collision name="body">
+      <origin xyz="0 0 0.1758"/>
+      <geometry><box size="0.4814 0.4814 0.2984"/></geometry>
+    </collision>
+
+    <collision name="caster_fl">
+      <origin xyz="0.190150 0.170150 0.0266"/>
+      <geometry><sphere radius="0.0266"/></geometry>
+    </collision>
+    <collision name="caster_fr">
+      <origin xyz="0.190150 -0.170150 0.0266"/>
+      <geometry><sphere radius="0.0266"/></geometry>
+    </collision>
+    <collision name="caster_rl">
+      <origin xyz="-0.190150 0.170150 0.0266"/>
+      <geometry><sphere radius="0.0266"/></geometry>
+    </collision>
+    <collision name="caster_rr">
+      <origin xyz="-0.190150 -0.170150 0.0266"/>
+      <geometry><sphere radius="0.0266"/></geometry>
+    </collision>
+  </link>
+
+  <link name="lidar_link"/>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 0.35"/>   <!-- PLACEHOLDER: just clear of the top plate (0.325) -->
+  </joint>
+
+  <!-- No friction block here on purpose: sdformat's URDF parser drops
+       <gazebo reference><mu1>, verified with `ign sdf -p urdf/tidybot.urdf`.
+       Zero friction is set on the world side instead (gen_world.py sets it on
+       the ground plane and on every wall) and DART combines the pair with
+       min(), so the base slides on both. That is the caster model. -->
+
+  <gazebo>
+    <!-- Fortress plugin names. Harmonic calls these gz-sim-*; do not mix. -->
+    <plugin filename="ignition-gazebo-velocity-control-system"
+            name="ignition::gazebo::systems::VelocityControl">
+      <!-- Commands land in the MODEL frame, which is what Nav2 emits on cmd_vel.
+           nav/mppi.py returns GLOBAL-frame (vx, vy, omega) - stage 3 must rotate
+           by -theta before publishing here. -->
+      <topic>cmd_vel</topic>
+    </plugin>
+
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_topic>odom</odom_topic>
+      <tf_topic>tf</tf_topic>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <dimensions>2</dimensions>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="lidar_link">
+    <sensor name="lidar" type="gpu_lidar">
+      <topic>scan</topic>
+      <!-- Without this the scan's frame_id is "tidybot/lidar_link/lidar" and no
+           TF by that name exists, so RViz drops every message. -->
+      <ignition_frame_id>lidar_link</ignition_frame_id>
+      <update_rate>10</update_rate>
+      <always_on>1</always_on>
+      <visualize>true</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>640</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.141593</min_angle>
+            <max_angle>3.141593</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>1</samples>
+            <min_angle>0</min_angle>
+            <max_angle>0</max_angle>
+          </vertical>
+        </scan>
+        <range>
+          <min>0.15</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+</robot>

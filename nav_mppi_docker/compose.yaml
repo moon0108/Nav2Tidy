@@ -1,0 +1,27 @@
+services:
+  nav:
+    build:
+      context: .
+      args: { UID: "1000", GID: "1000" }   # `id -u`, `id -g` 값으로
+    image: nav_mppi:humble
+    container_name: nav_mppi
+    network_mode: host
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONPATH=/home/moon/tidybot2
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./ws:/home/moon/ws
+      # nav/ 패키지(mppi.py, scene.py, grid.py, astar.py, metrics.py)를 그대로 쓴다.
+      # 복사본을 두면 어느 쪽이 진짜인지 모르게 되므로 원본 worktree를 rw로 붙인다.
+      - /home/moon/Tidy/tidybot2/.claude/worktrees/nav-astar-mppi:/home/moon/tidybot2
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    stdin_open: true
+    tty: true
