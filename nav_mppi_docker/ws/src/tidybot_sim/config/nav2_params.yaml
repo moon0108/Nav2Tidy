@@ -274,3 +274,27 @@ behavior_server:
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
+
+# Stage 3. Only read when nav2.launch.py runs with controller:=mppi; the MPPI
+# weights themselves are not here, they stay in nav/mppi.py MPPIConfig where
+# they were measured. gen_world.py checks the two agree.
+mppi_controller:
+  ros__parameters:
+    use_sim_time: True
+    # == 1 / MPPIConfig.dt. step() shifts the warm start by one horizon step per
+    # call, so solving faster than this burns the horizon; cmd_vel still goes
+    # out at 30 Hz, holding the latest command.
+    solve_frequency: 10.0
+    publish_frequency: 30.0
+    K: 512
+    lookahead_dist: 0.75        # RunConfig: 6/6 acceptance pairs, 1.25+ cuts the doorway corner
+    goal_switch_dist: 0.75
+    xy_goal_tolerance: 0.15     # same line as controller_server's general_goal_checker
+    yaw_goal_tolerance: 0.25
+    progress_radius: 0.5        # same rule as nav2_controller::SimpleProgressChecker
+    progress_time: 10.0
+    viz_samples: 24
+    costmap_topic: /local_costmap/costmap
+    costmap_frame: odom
+    base_frame: base_link
+    log_timing: true

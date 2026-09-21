@@ -3,3 +3,4 @@ nav_mppi_docker/ws/install/
 nav_mppi_docker/ws/log/
 __pycache__/
 *.pyc
+nav_mppi_docker/ws/src/tidybot_sim/results/timing_*.csv

@@ -126,7 +126,11 @@ def main():
     n = Goal()
     rc = max(n.send(k, timeout) for k in names)
     if name == 'all':
-        out = Path(__file__).resolve().parent.parent / 'results' / 'baseline_nav2.csv'
+        # Which planner is answering follow_path decides the filename. Reading
+        # the node list beats a flag: a mislabelled run is worse than no run,
+        # and stage 4 compares these two files directly.
+        label = 'mppi' if 'mppi_controller' in n.get_node_names() else 'nav2'
+        out = Path(__file__).resolve().parent.parent / 'results' / f'run_{label}.csv'
         out.parent.mkdir(exist_ok=True)
         with out.open('w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=list(n.rows[0]))

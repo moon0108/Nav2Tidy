@@ -183,8 +183,20 @@ def check_params(path):
         assert fp['ObstaclesCritic'][key] == infl[key], \
             f"ObstaclesCritic.{key} {fp['ObstaclesCritic'][key]} != costmap {infl[key]}"
 
+    # Stage 3 reads MPPIConfig directly, so only the numbers the yaml restates
+    # can drift: the solve rate against dt, and the goal line against Nav2's.
+    mc = p['mppi_controller']['ros__parameters']
+    assert abs(mc['solve_frequency'] - 1.0 / cfg.dt) < 1e-9, \
+        f"solve_frequency {mc['solve_frequency']} != 1/MPPIConfig.dt {1 / cfg.dt}"
+    gc = p['controller_server']['ros__parameters']['general_goal_checker']
+    for key in ('xy_goal_tolerance', 'yaw_goal_tolerance'):
+        assert mc[key] == gc[key], \
+            f'mppi_controller.{key} {mc[key]} != general_goal_checker {gc[key]}; ' \
+            'the two planners would be judged against different goal lines'
+
     print(f'  nav2_params.yaml agrees: r={scene.ROBOT_RADIUS}, '
-          f'v_max={tuple(cfg.v_max)}, horizon={horizon:.2f} s')
+          f'v_max={tuple(cfg.v_max)}, horizon={horizon:.2f} s, '
+          f'solve {mc["solve_frequency"]} Hz, goal {gc["xy_goal_tolerance"]} m')
 
 
 def check(*paths):
