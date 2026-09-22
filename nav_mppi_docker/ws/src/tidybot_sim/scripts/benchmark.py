@@ -54,6 +54,8 @@ RESULTS = PKG / 'results'
 # while multiplying the third difference behind mean_jerk by 8.
 SAMPLE_HZ = 10.0
 SETTLE_S = 2.0                   # after a teleport, before the goal is judged
+WZ_DEADBAND = 0.02               # rad/s; a sign change inside this is noise, not a flip
+V_DISC = 0.5                     # m/s; the round translational limit both are judged against
 CMD_HZ = 30.0                    # both controllers publish at this rate
 
 
@@ -148,6 +150,21 @@ class Bench(Node):
 
         m.success = result.result().status == 4          # STATUS_SUCCEEDED
         out = m.summary(real_time=False)
+
+        # Two numbers computed from the same 10 Hz cmd_vel samples for both
+        # controllers. wz_flip_rate is the wobble itself: the fraction of
+        # consecutive samples whose rotation reverses, ignoring near-zero wz.
+        # vxy_over_frac says how much the constraint mismatch matters in practice
+        # - nav2_mppi_controller can only express a per-axis box, so it may
+        # command up to 0.707 m/s on a diagonal where the challenger is held to
+        # the 0.5 m/s disc.
+        U = np.array(m.controls).reshape(-1, 3)
+        wz = U[:, 2]
+        live = (np.abs(wz[1:]) > WZ_DEADBAND) & (np.abs(wz[:-1]) > WZ_DEADBAND)
+        out['wz_flip_rate'] = round(float(np.mean((wz[1:] * wz[:-1] < 0) & live))
+                                    if len(wz) > 1 else 0.0, 4)
+        out['vxy_over_frac'] = round(float(np.mean(np.hypot(U[:, 0], U[:, 1]) > V_DISC + 1e-3))
+                                     if len(U) else 0.0, 4)
         # Achieved control period, the one timing number both sides expose.
         d = np.diff(self.cmd_t) / 1e6 if len(self.cmd_t) > 2 else np.zeros(0)
         out['cmd_period_p50_ms'] = round(pct(d, 50), 3)
@@ -197,7 +214,8 @@ def timing_of(new_files):
 
 COLUMNS = ['controller', 'variant', 'scenario', 'rep', 'success', 'nav_time', 'path_length',
            'min_wall_clearance', 'wall_collisions', 'mean_jerk', 'mean_speed',
-           'freezing_time', 'cmd_period_p50_ms', 'cmd_period_p99_ms', 'missed_rate',
+           'freezing_time', 'wz_flip_rate', 'vxy_over_frac',
+           'cmd_period_p50_ms', 'cmd_period_p99_ms', 'missed_rate',
            'solve_p50_ms', 'solve_p99_ms', 'cm_p50_ms', 'mppi_p50_ms', 'pub_p50_ms',
            'eta_p50']
 
@@ -275,11 +293,11 @@ def summarise(rows):
         return (f'{np.mean([r["success"] for r in sel]):5.0%} '
                 f'{f("nav_time", ok):7.1f} {f("path_length", ok):7.2f} '
                 f'{f("min_wall_clearance", sel):8.2f} {f("mean_jerk", ok):8.2f} '
-                f'{f("cmd_period_p50_ms", sel):7.1f} {f("cmd_period_p99_ms", sel):7.1f} '
-                f'{f("missed_rate", sel):7.1f}')
+                f'{f("mean_speed", ok):6.3f} {f("wz_flip_rate", sel):6.1%} '
+                f'{f("vxy_over_frac", sel):6.1%}')
 
     head = (f'{"controller/variant":20s} {"scenario":9s} {"succ":>5s} {"time":>7s} {"len":>7s} '
-            f'{"clear":>8s} {"jerk":>8s} {"cmd50":>7s} {"cmd99":>7s} {"missed":>7s}')
+            f'{"clear":>8s} {"jerk":>8s} {"speed":>6s} {"wzflip":>6s} {">0.5":>6s}')
     print(f'\n{head}\n{"-" * len(head)}')
     for c in dict.fromkeys((r['controller'], r.get('variant', 'default')) for r in rows):
         sel = [r for r in rows
