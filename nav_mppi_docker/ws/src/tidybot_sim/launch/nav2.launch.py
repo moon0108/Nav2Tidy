@@ -72,8 +72,11 @@ def _setup(context, *_a, **_k):
         for pkg, exe in SERVERS
     ]
     if mppi:
-        nodes.append(Node(package='tidybot_sim', executable='mppi_controller.py',
-                          name='mppi_controller', output='screen', parameters=[params]))
+        nodes.append(Node(
+            package='tidybot_sim', executable='mppi_controller.py',
+            name='mppi_controller', output='screen',
+            parameters=[params, {'mppi_overrides':
+                                 LaunchConfiguration('mppi_overrides').perform(context)}]))
     nodes.append(
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_nav', output='screen',
@@ -98,6 +101,8 @@ def generate_launch_description():
         DeclareLaunchArgument('controller', default_value='nav2',
                               choices=['nav2', 'mppi'],
                               description='nav2_mppi_controller, or nav/mppi.py'),
+        DeclareLaunchArgument('mppi_overrides', default_value='',
+                              description='MPPIConfig overrides, e.g. "lam=10.0"'),
         DeclareLaunchArgument('sim', default_value='true',
                               description='false to attach Nav2 to an already running sim'),
         sim,

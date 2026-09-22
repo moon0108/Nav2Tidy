@@ -155,14 +155,18 @@ class Bench(Node):
         return out
 
 
-def launch(controller):
+def launch(controller, overrides=''):
     log = RESULTS / f'launch_{controller}.log'
     RESULTS.mkdir(exist_ok=True)
     f = log.open('w')
-    p = subprocess.Popen(
-        ['ros2', 'launch', 'tidybot_sim', 'nav2.launch.py',
-         f'controller:={controller}', 'headless:=true', 'rviz:=false'],
-        stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+    cmd = ['ros2', 'launch', 'tidybot_sim', 'nav2.launch.py',
+           f'controller:={controller}', 'headless:=true', 'rviz:=false']
+    if overrides:
+        # ros2 launch rejects a bare 'name:=' as malformed, so the default case
+        # must omit the argument entirely rather than pass an empty one.
+        cmd.append(f'mppi_overrides:={overrides}')
+    p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT,
+                         start_new_session=True)
     return p, log
 
 
@@ -191,7 +195,7 @@ def timing_of(new_files):
     return out
 
 
-COLUMNS = ['controller', 'scenario', 'rep', 'success', 'nav_time', 'path_length',
+COLUMNS = ['controller', 'variant', 'scenario', 'rep', 'success', 'nav_time', 'path_length',
            'min_wall_clearance', 'wall_collisions', 'mean_jerk', 'mean_speed',
            'freezing_time', 'cmd_period_p50_ms', 'cmd_period_p99_ms', 'missed_rate',
            'solve_p50_ms', 'solve_p99_ms', 'cm_p50_ms', 'mppi_p50_ms', 'pub_p50_ms',
@@ -205,6 +209,9 @@ def main():
     ap.add_argument('--scenarios', nargs='+', default=sorted(scene.SCENARIOS),
                     choices=sorted(scene.SCENARIOS))
     ap.add_argument('--repeats', type=int, default=5)
+    # One launch per entry, since MPPIConfig is read at node start.
+    ap.add_argument('--variants', nargs='*', default=[''], metavar='OVERRIDES',
+                    help='MPPIConfig overrides per run, e.g. "lam=2.0" "lam=10.0"')
     ap.add_argument('--timeout', type=float, default=120.0)
     ap.add_argument('--out', default=str(RESULTS / 'benchmark.csv'))
     a = ap.parse_args()
@@ -212,8 +219,10 @@ def main():
     rclpy.init()
     rows = []
     try:
-        for controller in a.controllers:
-            proc, log = launch(controller)
+        jobs = [(c, v) for c in a.controllers
+                for v in (a.variants if c == 'mppi' else [''])]
+        for controller, overrides in jobs:
+            proc, log = launch(controller, overrides)
             node = Bench()                      # fresh per stack, so discovery is too
             try:
                 node.wait_ready()
@@ -232,9 +241,10 @@ def main():
                         if controller == 'mppi':
                             r.update(timing_of(
                                 set(glob.glob(str(RESULTS / 'timing_*.csv'))) - before))
-                        r.update(controller=controller, scenario=name, rep=rep)
+                        r.update(controller=controller, scenario=name, rep=rep,
+                                 variant=overrides or 'default')
                         rows.append(r)
-                        print(f"{controller:5s} {name:9s} rep{rep}  "
+                        print(f"{controller:5s} {(overrides or 'default')[:14]:14s} {name:9s} rep{rep}  "
                               f"{'OK ' if r['success'] else 'FAIL'} "
                               f"t={r['nav_time']:5.1f}s len={r['path_length']:5.2f}m "
                               f"clear={r['min_wall_clearance']:.2f}m "
@@ -268,24 +278,25 @@ def summarise(rows):
                 f'{f("cmd_period_p50_ms", sel):7.1f} {f("cmd_period_p99_ms", sel):7.1f} '
                 f'{f("missed_rate", sel):7.1f}')
 
-    head = (f'{"controller":10s} {"scenario":9s} {"succ":>5s} {"time":>7s} {"len":>7s} '
+    head = (f'{"controller/variant":20s} {"scenario":9s} {"succ":>5s} {"time":>7s} {"len":>7s} '
             f'{"clear":>8s} {"jerk":>8s} {"cmd50":>7s} {"cmd99":>7s} {"missed":>7s}')
     print(f'\n{head}\n{"-" * len(head)}')
-    for c in dict.fromkeys(r['controller'] for r in rows):
-        for s in dict.fromkeys(r['scenario'] for r in rows):
-            sel = [r for r in rows if r['controller'] == c and r['scenario'] == s]
-            if sel:
-                print(f'{c:10s} {s:9s} {agg(sel)}')
-        sel = [r for r in rows if r['controller'] == c]
-        print(f'{c:10s} {"ALL":9s} {agg(sel)}')
+    for c in dict.fromkeys((r['controller'], r.get('variant', 'default')) for r in rows):
+        sel = [r for r in rows
+               if (r['controller'], r.get('variant', 'default')) == c]
+        label = f'{c[0]}/{c[1]}'[:20]
+        print(f'{label:20s} {"ALL":9s} {agg(sel)}')
 
-    mp = [r for r in rows if r['controller'] == 'mppi' and 'solve_p50_ms' in r]
-    if mp:
-        g = lambda k: np.mean([r[k] for r in mp if k in r])
-        print(f'\nmppi solve breakdown (not measurable for nav2): '
-              f'costmap {g("cm_p50_ms"):.2f} + mppi {g("mppi_p50_ms"):.2f} + '
-              f'publish {g("pub_p50_ms"):.2f} = p50 {g("solve_p50_ms"):.2f}, '
-              f'p99 {g("solve_p99_ms"):.2f} ms | eta p50 {g("eta_p50"):.2f} of K=512')
+    for v in dict.fromkeys(r.get('variant', 'default') for r in rows
+                           if r['controller'] == 'mppi'):
+        mp = [r for r in rows if r['controller'] == 'mppi'
+              and r.get('variant', 'default') == v and 'solve_p50_ms' in r]
+        if mp:
+            g = lambda k: np.mean([r[k] for r in mp if k in r])
+            print(f'\nmppi/{v} (nav2 exposes none of this): '
+                  f'costmap {g("cm_p50_ms"):.2f} + mppi {g("mppi_p50_ms"):.2f} + '
+                  f'publish {g("pub_p50_ms"):.2f} = p50 {g("solve_p50_ms"):.2f}, '
+                  f'p99 {g("solve_p99_ms"):.2f} ms | eta p50 {g("eta_p50"):.2f} of K=512')
 
 
 if __name__ == '__main__':

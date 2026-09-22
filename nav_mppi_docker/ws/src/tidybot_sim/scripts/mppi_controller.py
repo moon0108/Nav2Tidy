@@ -54,10 +54,36 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
 
+from dataclasses import fields, replace
+
 from nav.astar import lookahead
 from nav.mppi import MPPI, MPPIConfig
 
 RESULTS = Path(__file__).resolve().parent.parent / 'results'
+
+
+def override(cfg, spec):
+    """'lam=10.0 sgf_window=0' -> a new MPPIConfig.
+
+    Types come from the dataclass so int fields stay int - a float T or K
+    crashes numpy on a shape argument. nav.sweep has this logic already, but
+    importing it drags in nav.runner and with it MuJoCo, which is not in this
+    image. v_max is a tuple that sweep cannot reach either; v_max_xy sets its
+    first two, an actuator limit rather than a cost weight.
+    """
+    types = {f.name: f.type for f in fields(MPPIConfig)}
+    kw, xy = {}, None
+    for item in spec.split():
+        k, _, v = item.partition('=')
+        if k == 'v_max_xy':
+            xy = float(v)
+            continue
+        assert k in types, f'MPPIConfig has no field {k!r}'
+        t = types[k]
+        kw[k] = (v.strip().lower() in ('1', 'true', 'yes')) if t in (bool, 'bool') \
+            else int(v) if t in (int, 'int') else float(v)
+    cfg = replace(cfg, **kw)
+    return replace(cfg, v_max=(xy, xy, cfg.v_max[2])) if xy is not None else cfg
 
 
 def yaw_of(q):
@@ -144,10 +170,18 @@ class MppiController(Node):
             ('costmap_frame', 'odom'),
             ('base_frame', 'base_link'),
             ('log_timing', True),
+            # Scalar MPPIConfig fields, e.g. "lam=10.0 sgf_window=0". For
+            # diagnostics and sweeps; empty means the file's own tuning. v_max is
+            # a tuple so sweep.py cannot reach it - v_max_xy=0.35 sets its first
+            # two, which is an actuator limit rather than a cost weight.
+            ('mppi_overrides', ''),
         ])
         self.p = {q.name: q.value for q in p}
 
-        self.cfg = MPPIConfig(K=int(self.p['K']))
+        self.cfg = override(MPPIConfig(K=int(self.p['K'])),
+                            str(self.p['mppi_overrides']))
+        if self.p['mppi_overrides']:
+            self.get_logger().warn(f"MPPIConfig overridden: {self.p['mppi_overrides']}")
         assert abs(self.cfg.dt - 1.0 / self.p['solve_frequency']) < 1e-9, (
             f"solve_frequency {self.p['solve_frequency']} != 1/MPPIConfig.dt "
             f'{1 / self.cfg.dt}; step() shifts the warm start by exactly dt per call')
