@@ -172,7 +172,21 @@ class Bench(Node):
         return out
 
 
+def ensure_router():
+    """Start the zenoh router if none is running. Without it every node comes up and
+    none sees another; the first symptom is a 90 s wait for a /clock that never
+    arrives. A container restart takes the router with it and nothing brings it
+    back. Only started when absent - a second router fights the first."""
+    if subprocess.run(['pgrep', '-f', 'rmw_zenohd'], capture_output=True).returncode == 0:
+        return
+    print('  no zenoh router running; starting one', flush=True)
+    subprocess.Popen(['ros2', 'run', 'rmw_zenoh_cpp', 'rmw_zenohd'],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    time.sleep(3)
+
+
 def launch(controller, overrides='', gui=False):
+    ensure_router()
     # Clear the bus first. Anything already running - a stack from an ad-hoc
     # probe, a crashed run - puts a second controller, a second bridge and a
     # second robot on it, and every number measured on top is void. It has
@@ -244,7 +258,9 @@ def main():
     ap.add_argument('--variants', nargs='*', default=[''], metavar='OVERRIDES',
                     help='MPPIConfig overrides per run, e.g. "lam=2.0" "lam=10.0"')
     ap.add_argument('--timeout', type=float, default=120.0)
-    ap.add_argument('--out', default=str(RESULTS / 'benchmark.csv'))
+    # Default is a new file per run: the old default was results/benchmark.csv,
+    # the committed stage 4 result, and a run without --out overwrote it.
+    ap.add_argument('--out', default=str(RESULTS / f'run_{time.strftime("%m%d_%H%M%S")}.csv'))
     # Headless by default: it is faster, and 40 episodes do not need watching.
     # With --gui, Gazebo and RViz open; add a MarkerArray display on
     # /mppi_controller/rollouts in RViz to see the samples.
