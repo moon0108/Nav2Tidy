@@ -172,12 +172,18 @@ class Bench(Node):
         return out
 
 
-def launch(controller, overrides=''):
+def launch(controller, overrides='', gui=False):
+    # Clear the bus first. Anything already running - a stack from an ad-hoc
+    # probe, a crashed run - puts a second controller, a second bridge and a
+    # second robot on it, and every number measured on top is void. It has
+    # happened twice in this project.
+    stop()
     log = RESULTS / f'launch_{controller}.log'
     RESULTS.mkdir(exist_ok=True)
     f = log.open('w')
     cmd = ['ros2', 'launch', 'tidybot_sim', 'nav2.launch.py',
-           f'controller:={controller}', 'headless:=true', 'rviz:=false']
+           f'controller:={controller}',
+           f'headless:={"false" if gui else "true"}', f'rviz:={"true" if gui else "false"}']
     if overrides:
         # ros2 launch rejects a bare 'name:=' as malformed, so the default case
         # must omit the argument entirely rather than pass an empty one.
@@ -197,6 +203,9 @@ def timing_of(new_files):
     if not new_files:
         return {}
     rows = list(csv.DictReader(open(sorted(new_files, key=os.path.getmtime)[-1])))
+    # A row cut short (a file read while another writer truncates it) has None
+    # in its missing fields; drop it rather than crash forty episodes in.
+    rows = [r for r in rows if None not in r.values() and '' not in (r.get('eta'), r.get('cm_ms'))]
     if not rows:
         return {}
     out = {}
@@ -236,6 +245,10 @@ def main():
                     help='MPPIConfig overrides per run, e.g. "lam=2.0" "lam=10.0"')
     ap.add_argument('--timeout', type=float, default=120.0)
     ap.add_argument('--out', default=str(RESULTS / 'benchmark.csv'))
+    # Headless by default: it is faster, and 40 episodes do not need watching.
+    # With --gui, Gazebo and RViz open; add a MarkerArray display on
+    # /mppi_controller/rollouts in RViz to see the samples.
+    ap.add_argument('--gui', action='store_true', help='open Gazebo and RViz to watch')
     a = ap.parse_args()
 
     rclpy.init()
@@ -244,17 +257,27 @@ def main():
         jobs = [(c, v) for c in a.controllers
                 for v in (a.variants if c == 'mppi' else [''])]
         for controller, overrides in jobs:
-            proc, log = launch(controller, overrides)
+            # Everything the stack itself says goes to the launch log, and a line
+            # only prints when an episode ends - up to a couple of minutes of a
+            # silent terminal otherwise. Say what is happening as it happens.
+            print(f'\n[{controller}] {overrides or "default"}', flush=True)
+            print(f'  launching stack{" with GUI" if a.gui else " (headless)"} ... '
+                  f'log: {RESULTS / f"launch_{controller}.log"}', flush=True)
+            t_launch = time.time()
+            proc, log = launch(controller, overrides, a.gui)
             node = Bench()                      # fresh per stack, so discovery is too
             try:
                 node.wait_ready()
+                print(f'  stack ready in {time.time() - t_launch:.0f} s', flush=True)
                 for rep in range(a.repeats):
                     for name in a.scenarios:
                         before = set(glob.glob(str(RESULTS / 'timing_*.csv')))
                         off = log.stat().st_size
+                        print(f'  {name:9s} rep{rep}  running (up to {a.timeout:.0f} s sim) ... ',
+                              end='', flush=True)
                         r = node.episode(name, a.timeout)
                         if r is None:
-                            print(f'{controller}/{name}/{rep}: goal rejected')
+                            print('goal rejected', flush=True)
                             continue
                         with log.open(errors='ignore') as f:
                             f.seek(off)
@@ -266,8 +289,7 @@ def main():
                         r.update(controller=controller, scenario=name, rep=rep,
                                  variant=overrides or 'default')
                         rows.append(r)
-                        print(f"{controller:5s} {(overrides or 'default')[:14]:14s} {name:9s} rep{rep}  "
-                              f"{'OK ' if r['success'] else 'FAIL'} "
+                        print(f"{'OK ' if r['success'] else 'FAIL'} "
                               f"t={r['nav_time']:5.1f}s len={r['path_length']:5.2f}m "
                               f"clear={r['min_wall_clearance']:.2f}m "
                               f"jerk={r['mean_jerk']:6.2f}")
