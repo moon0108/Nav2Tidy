@@ -358,6 +358,10 @@ class MppiController(Node):
             u = mppi.step(x, wp, goal_theta=goal_th, cost_volume=None)  # N_o = 0
             t2 = time.perf_counter()
 
+            if mppi.last_fallback:
+                self.get_logger().warn(
+                    f'all {mppi.K} rollouts enter the lethal band; weighing all of them',
+                    throttle_duration_sec=1.0)
             with self.lock:
                 self.u_odom = u
             self._draw(mppi, frame)
@@ -389,6 +393,14 @@ class MppiController(Node):
                 # ones" and becomes "pick one noisy rollout", which is what a
                 # wobbling base looks like. Logged so the diagnosis is a number.
                 'eta': round(mppi.last_eta, 3),
+                # Stage 2: the temperature actually used, how many rollouts were
+                # dropped for entering the lethal band, whether every one did (and
+                # the softmax fell back to all of them), and the spread of the IS
+                # term - the quantity that caps eta when it is tied to lam.
+                'lam': round(float(mppi.lam), 4),
+                'n_hit': mppi.last_n_hit,
+                'fallback': int(mppi.last_fallback),
+                'is_std': round(mppi.last_is_std, 3),
             })
             rate.sleep()
 

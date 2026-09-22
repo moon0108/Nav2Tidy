@@ -209,6 +209,10 @@ def timing_of(new_files):
     out['solve_p50_ms'] = round(pct(s, 50), 3)
     out['solve_p99_ms'] = round(pct(s, 99), 3)
     out['eta_p50'] = round(pct([float(r['eta']) for r in rows], 50), 3)
+    if 'lam' in rows[0]:
+        out['lam_p50'] = round(pct([float(r['lam']) for r in rows], 50), 3)
+        out['hit_frac'] = round(float(np.mean([float(r['n_hit']) for r in rows])) / 512, 4)
+        out['fallback_frac'] = round(float(np.mean([float(r['fallback']) for r in rows])), 4)
     return out
 
 
@@ -217,7 +221,7 @@ COLUMNS = ['controller', 'variant', 'scenario', 'rep', 'success', 'nav_time', 'p
            'freezing_time', 'wz_flip_rate', 'vxy_over_frac',
            'cmd_period_p50_ms', 'cmd_period_p99_ms', 'missed_rate',
            'solve_p50_ms', 'solve_p99_ms', 'cm_p50_ms', 'mppi_p50_ms', 'pub_p50_ms',
-           'eta_p50']
+           'eta_p50', 'lam_p50', 'hit_frac', 'fallback_frac']
 
 
 def main():
@@ -314,7 +318,9 @@ def summarise(rows):
             print(f'\nmppi/{v} (nav2 exposes none of this): '
                   f'costmap {g("cm_p50_ms"):.2f} + mppi {g("mppi_p50_ms"):.2f} + '
                   f'publish {g("pub_p50_ms"):.2f} = p50 {g("solve_p50_ms"):.2f}, '
-                  f'p99 {g("solve_p99_ms"):.2f} ms | eta p50 {g("eta_p50"):.2f} of K=512')
+                  f'p99 {g("solve_p99_ms"):.2f} ms | eta p50 {g("eta_p50"):.2f} of K=512'
+                  + (f' | lam p50 {g("lam_p50"):.2f}, hits {g("hit_frac"):.1%}, '
+                     f'fallback {g("fallback_frac"):.2%}' if any('lam_p50' in r for r in mp) else ''))
 
 
 if __name__ == '__main__':
