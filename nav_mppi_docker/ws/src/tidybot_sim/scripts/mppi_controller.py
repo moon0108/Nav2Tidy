@@ -68,21 +68,28 @@ def override(cfg, spec):
     Types come from the dataclass so int fields stay int - a float T or K
     crashes numpy on a shape argument. nav.sweep has this logic already, but
     importing it drags in nav.runner and with it MuJoCo, which is not in this
-    image. v_max is a tuple that sweep cannot reach either; v_max_xy sets its
-    first two, an actuator limit rather than a cost weight.
+    image. v_max and sigma are tuples that sweep cannot reach either: v_max_xy
+    sets v_max's first two (an actuator limit, not a cost weight), sigma_v the
+    translational sampling std and sigma_w the rotational one.
     """
     types = {f.name: f.type for f in fields(MPPIConfig)}
-    kw, xy = {}, None
+    kw, xy, sig = {}, None, {}
     for item in spec.split():
         k, _, v = item.partition('=')
         if k == 'v_max_xy':
             xy = float(v)
+            continue
+        if k in ('sigma_v', 'sigma_w'):
+            sig[k] = float(v)
             continue
         assert k in types, f'MPPIConfig has no field {k!r}'
         t = types[k]
         kw[k] = (v.strip().lower() in ('1', 'true', 'yes')) if t in (bool, 'bool') \
             else int(v) if t in (int, 'int') else float(v)
     cfg = replace(cfg, **kw)
+    if sig:
+        sv, sw = sig.get('sigma_v', cfg.sigma[0]), sig.get('sigma_w', cfg.sigma[2])
+        cfg = replace(cfg, sigma=(sv, sv, sw))
     return replace(cfg, v_max=(xy, xy, cfg.v_max[2])) if xy is not None else cfg
 
 
