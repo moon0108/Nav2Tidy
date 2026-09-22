@@ -226,6 +226,12 @@ class MppiController(Node):
         self.mppi = MPPI(None, self.cfg)
         self.rows = []
         self.nav_t0 = None
+        # Progress check state lives with the navigation, not with one goal. The
+        # BT re-sends FollowPath about once a second; kept per goal, the 10 s
+        # window restarted on every replan and never fired, so a stalled base
+        # never got the BT's recovery branch. controller_server resets its
+        # progress checker when a goal starts, not in updateGlobalPath().
+        self.prog_xy, self.prog_t = None, None
         self.create_timer(1.0 / self.p['publish_frequency'], self._publish,
                           callback_group=group)
 
@@ -309,8 +315,14 @@ class MppiController(Node):
             self.get_logger().error(f'cannot transform path into {frame}: {e}')
             handle.abort()
             return result
-        if len(path) < 2:
-            self.get_logger().error('path has fewer than 2 poses')
+        # A single pose is a valid path, not an error. SmacPlanner2D sends one
+        # whenever the robot already sits in the goal cell - position reached,
+        # heading not yet - and controller_server accepts it. Rejecting it made
+        # the BT loop recover-replan-reject until it gave up: 74 single-pose
+        # paths refused in one run, every failure in a scenario that starts 90
+        # degrees off the goal heading. lookahead() on one point returns it.
+        if len(path) == 0:
+            self.get_logger().error('path has no poses')
             handle.abort()
             return result
 
@@ -320,10 +332,10 @@ class MppiController(Node):
         if not self.rows:                    # first goal of this navigation
             mppi.reset()
             self.nav_t0 = self.get_clock().now()
+            self.prog_xy, self.prog_t = None, self.nav_t0
         rate = self.create_rate(self.p['solve_frequency'])
 
         t_start = self.nav_t0
-        last_move, last_move_t = None, t_start
         self.driving = True
         outcome = 'aborted'
 
@@ -379,9 +391,9 @@ class MppiController(Node):
             t3 = time.perf_counter()
 
             now = self.get_clock().now()
-            if last_move is None or np.linalg.norm(x[:2] - last_move) > self.p['progress_radius']:
-                last_move, last_move_t = x[:2].copy(), now
-            elif (now - last_move_t).nanoseconds > self.p['progress_time'] * 1e9:
+            if self.prog_xy is None or np.linalg.norm(x[:2] - self.prog_xy) > self.p['progress_radius']:
+                self.prog_xy, self.prog_t = x[:2].copy(), now
+            elif (now - self.prog_t).nanoseconds > self.p['progress_time'] * 1e9:
                 self.get_logger().error(
                     f"no {self.p['progress_radius']} m of progress in "
                     f"{self.p['progress_time']} s")

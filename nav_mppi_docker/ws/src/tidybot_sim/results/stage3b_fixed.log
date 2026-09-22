@@ -1,0 +1,76 @@
+[WARN] [1790069931.216771141] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[WARN] [1790070479.469931615] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+mppi  vxy_disc=true  clutter   rep0  FAIL t=120.1s len= 4.14m clear=0.50m jerk=  4.80
+mppi  vxy_disc=true  corridor  rep0  OK  t= 23.6s len= 8.23m clear=0.60m jerk=  2.79
+mppi  vxy_disc=true  doorway   rep0  OK  t= 22.5s len= 7.52m clear=0.46m jerk=  3.83
+mppi  vxy_disc=true  utrap     rep0  OK  t= 18.1s len= 5.94m clear=0.46m jerk=  3.19
+mppi  vxy_disc=true  clutter   rep1  FAIL t=120.1s len= 4.22m clear=0.50m jerk=  5.26
+mppi  vxy_disc=true  corridor  rep1  OK  t= 23.7s len= 8.23m clear=0.60m jerk=  2.21
+mppi  vxy_disc=true  doorway   rep1  OK  t= 22.6s len= 7.51m clear=0.47m jerk=  2.89
+mppi  vxy_disc=true  utrap     rep1  OK  t= 18.4s len= 5.96m clear=0.46m jerk=  2.64
+mppi  vxy_disc=true  clutter   rep2  FAIL t=120.1s len= 4.03m clear=0.50m jerk=  4.73
+mppi  vxy_disc=true  corridor  rep2  OK  t= 23.3s len= 8.07m clear=0.51m jerk=  3.28
+mppi  vxy_disc=true  doorway   rep2  OK  t= 22.6s len= 7.52m clear=0.47m jerk=  2.80
+mppi  vxy_disc=true  utrap     rep2  OK  t= 18.4s len= 5.95m clear=0.46m jerk=  2.59
+mppi  vxy_disc=true  clutter   rep3  FAIL t=120.1s len= 4.11m clear=0.49m jerk=  4.87
+mppi  vxy_disc=true  corridor  rep3  OK  t= 23.9s len= 8.26m clear=0.60m jerk=  2.51
+mppi  vxy_disc=true  doorway   rep3  OK  t= 22.9s len= 7.55m clear=0.47m jerk=  2.64
+mppi  vxy_disc=true  utrap     rep3  OK  t= 17.9s len= 5.96m clear=0.49m jerk=  2.63
+mppi  vxy_disc=true  clutter   rep4  FAIL t=120.1s len= 4.02m clear=0.50m jerk=  4.87
+mppi  vxy_disc=true  corridor  rep4  OK  t= 23.7s len= 8.23m clear=0.60m jerk=  3.09
+mppi  vxy_disc=true  doorway   rep4  OK  t= 22.9s len= 7.54m clear=0.46m jerk=  2.91
+mppi  vxy_disc=true  utrap     rep4  OK  t= 18.1s len= 5.95m clear=0.46m jerk=  3.04
+mppi  vxy_disc=true  clutter   rep0  OK  t= 19.8s len= 5.34m clear=0.47m jerk=  4.27
+mppi  vxy_disc=true  corridor  rep0  OK  t= 21.6s len= 8.22m clear=0.60m jerk=  2.14
+mppi  vxy_disc=true  doorway   rep0  OK  t= 20.5s len= 7.50m clear=0.47m jerk=  2.72
+mppi  vxy_disc=true  utrap     rep0  OK  t= 16.5s len= 5.95m clear=0.46m jerk=  2.56
+mppi  vxy_disc=true  clutter   rep1  OK  t= 55.8s len= 6.30m clear=0.47m jerk=  5.14
+mppi  vxy_disc=true  corridor  rep1  OK  t= 21.5s len= 8.22m clear=0.60m jerk=  1.93
+mppi  vxy_disc=true  doorway   rep1  OK  t= 20.9s len= 7.51m clear=0.47m jerk=  2.48
+mppi  vxy_disc=true  utrap     rep1  OK  t= 16.5s len= 5.94m clear=0.46m jerk=  1.97
+mppi  vxy_disc=true  clutter   rep2  OK  t= 20.5s len= 5.35m clear=0.46m jerk=  2.81
+mppi  vxy_disc=true  corridor  rep2  OK  t= 21.3s len= 8.22m clear=0.60m jerk=  1.82
+mppi  vxy_disc=true  doorway   rep2  OK  t= 20.9s len= 7.49m clear=0.47m jerk=  2.59
+mppi  vxy_disc=true  utrap     rep2  OK  t= 16.5s len= 5.95m clear=0.46m jerk=  2.38
+mppi  vxy_disc=true  clutter   rep3  OK  t= 60.9s len= 6.38m clear=0.46m jerk=  4.61
+mppi  vxy_disc=true  corridor  rep3  OK  t= 21.5s len= 8.24m clear=0.60m jerk=  1.97
+mppi  vxy_disc=true  doorway   rep3  OK  t= 20.8s len= 7.53m clear=0.46m jerk=  2.56
+mppi  vxy_disc=true  utrap     rep3  OK  t= 16.4s len= 5.93m clear=0.46m jerk=  2.08
+mppi  vxy_disc=true  clutter   rep4  OK  t= 46.9s len= 6.00m clear=0.46m jerk=  4.52
+mppi  vxy_disc=true  corridor  rep4  OK  t= 21.5s len= 8.23m clear=0.60m jerk=  1.79
+mppi  vxy_disc=true  doorway   rep4  OK  t= 20.8s len= 7.52m clear=0.47m jerk=  2.48
+mppi  vxy_disc=true  utrap     rep4  OK  t= 16.6s len= 5.94m clear=0.46m jerk=  2.58
+mppi  vxy_disc=true  clutter   rep0  OK  t= 50.8s len= 6.07m clear=0.47m jerk=  4.14
+mppi  vxy_disc=true  corridor  rep0  OK  t= 37.6s len= 8.57m clear=0.60m jerk=  2.30
+mppi  vxy_disc=true  doorway   rep0  OK  t= 20.3s len= 7.52m clear=0.46m jerk=  1.97
+mppi  vxy_disc=true  utrap     rep0  OK  t= 16.1s len= 5.93m clear=0.46m jerk=  1.87
+mppi  vxy_disc=true  clutter   rep1  OK  t= 58.2s len= 6.19m clear=0.47m jerk=  3.98
+mppi  vxy_disc=true  corridor  rep1  OK  t= 37.2s len= 8.53m clear=0.60m jerk=  2.33
+mppi  vxy_disc=true  doorway   rep1  OK  t= 20.3s len= 7.52m clear=0.47m jerk=  2.21
+mppi  vxy_disc=true  utrap     rep1  OK  t= 16.3s len= 5.94m clear=0.46m jerk=  2.09
+mppi  vxy_disc=true  clutter   rep2  OK  t= 42.8s len= 5.76m clear=0.46m jerk=  3.32
+mppi  vxy_disc=true  corridor  rep2  OK  t= 35.5s len= 8.55m clear=0.60m jerk=  2.35
+mppi  vxy_disc=true  doorway   rep2  OK  t= 20.3s len= 7.50m clear=0.46m jerk=  2.05
+mppi  vxy_disc=true  utrap     rep2  OK  t= 16.3s len= 5.94m clear=0.46m jerk=  2.08
+mppi  vxy_disc=true  clutter   rep3  OK  t= 49.0s len= 5.98m clear=0.47m jerk=  3.91
+mppi  vxy_disc=true  corridor  rep3  OK  t= 38.3s len= 8.63m clear=0.60m jerk=  2.53
+mppi  vxy_disc=true  doorway   rep3  OK  t= 20.4s len= 7.53m clear=0.47m jerk=  2.06
+mppi  vxy_disc=true  utrap     rep3  OK  t= 16.4s len= 5.95m clear=0.46m jerk=  2.00
+mppi  vxy_disc=true  clutter   rep4  OK  t= 51.2s len= 5.95m clear=0.46m jerk=  3.35
+mppi  vxy_disc=true  corridor  rep4  OK  t= 39.3s len= 8.60m clear=0.60m jerk=  2.66
+mppi  vxy_disc=true  doorway   rep4  OK  t= 20.3s len= 7.50m clear=0.46m jerk=  2.86
+mppi  vxy_disc=true  utrap     rep4  OK  t= 16.1s len= 5.92m clear=0.46m jerk=  1.88
+
+wrote results/stage3b_fixed.csv
+
+controller/variant   scenario   succ    time     len    clear     jerk  speed wzflip   >0.5
+-------------------------------------------------------------------------------------------
+mppi/vxy_disc=true s ALL         75%    21.5    7.23     0.50     2.87  0.337  18.7%   0.0%
+mppi/vxy_disc=true s ALL        100%    24.9    6.89     0.50     2.77  0.322  10.6%   0.0%
+mppi/vxy_disc=true s ALL        100%    31.1    7.00     0.50     2.60  0.272   4.8%   0.0%
+
+mppi/vxy_disc=true sgf_window=0 rd_w=2.0 rd_v=3.0 exclude_hits=true decouple_is=true solve_lam=true eta_min=25.6 eta_max=51.2 sigma_v=0.10 (nav2 exposes none of this): costmap 0.20 + mppi 4.37 + publish 2.40 = p50 7.12, p99 13.37 ms | eta p50 36.86 of K=512 | lam p50 5.64, hits 0.1%, fallback 0.00%
+
+mppi/vxy_disc=true sgf_window=0 rd_w=2.0 rd_v=3.0 exclude_hits=true decouple_is=true solve_lam=true eta_min=25.6 eta_max=51.2 sigma_v=0.10 sigma_w=0.3 (nav2 exposes none of this): costmap 0.20 + mppi 4.25 + publish 2.38 = p50 6.94, p99 12.55 ms | eta p50 37.08 of K=512 | lam p50 4.38, hits 0.2%, fallback 0.00%
+
+mppi/vxy_disc=true sgf_window=0 rd_w=2.0 rd_v=3.0 exclude_hits=true decouple_is=true solve_lam=true eta_min=25.6 eta_max=51.2 sigma_v=0.10 sigma_w=0.15 (nav2 exposes none of this): costmap 0.20 + mppi 4.27 + publish 2.40 = p50 7.00, p99 13.15 ms | eta p50 36.49 of K=512 | lam p50 3.65, hits 0.2%, fallback 0.00%
