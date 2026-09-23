@@ -275,9 +275,12 @@ behavior_server:
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
 
-# Stage 3. Only read when nav2.launch.py runs with controller:=mppi; the MPPI
-# weights themselves are not here, they stay in nav/mppi.py MPPIConfig where
-# they were measured. gen_world.py checks the two agree.
+# Read only when nav2.launch.py runs with controller:=mppi. Everything the
+# optimiser itself does - sample count, horizon, noise, cost weights, the eta
+# band - lives in nav/mppi.py MPPIConfig, whose defaults are the measured
+# configuration; what is here is how the ROS node drives it. gen_world.py
+# asserts the two still agree on the robot radius, the velocity limits, the
+# horizon and the goal tolerance.
 mppi_controller:
   ros__parameters:
     use_sim_time: True
@@ -286,9 +289,13 @@ mppi_controller:
     # out at 30 Hz, holding the latest command.
     solve_frequency: 10.0
     publish_frequency: 30.0
-    K: 512
+    K: 512                      # == MPPIConfig.K; the node passes it through
     lookahead_dist: 0.75        # RunConfig: 6/6 acceptance pairs, 1.25+ cuts the doorway corner
-    goal_switch_dist: 0.75
+    goal_switch_dist: 0.75      # below this the carrot becomes the goal itself
+    # Empty runs MPPIConfig's defaults. A sweep sets scalar fields by name here or
+    # through the launch argument of the same name, plus v_max_xy, sigma_v, sigma_w
+    # for the tuple fields; see override() in mppi_controller.py.
+    mppi_overrides: ''
     xy_goal_tolerance: 0.15     # same line as controller_server's general_goal_checker
     yaw_goal_tolerance: 0.25
     progress_radius: 0.5        # same rule as nav2_controller::SimpleProgressChecker

@@ -3,9 +3,10 @@
 
     ros2 launch tidybot_sim nav2.launch.py controller:=mppi scenario:=utrap
 
-nav/mppi.py is not touched: no change to the update rule, the cost terms or the
-weights. Everything here is interface - frames in, a Grid-shaped object in,
-(vx, vy, wz) out.
+Everything in this file is interface - frames in, a Grid-shaped object in,
+(vx, vy, wz) out. The planner's own tuning lives in nav/mppi.py MPPIConfig and
+its defaults are the configuration these scenarios were measured with, so
+mppi_overrides is empty unless a sweep is running.
 
 controller_server still runs, with its follow_path action remapped away: it owns
 local_costmap, published_footprint and clear_entirely_local_costmap, which
