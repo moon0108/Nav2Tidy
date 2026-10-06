@@ -1,0 +1,80 @@
+# 실기 모니터링 모드의 planner. 내 PC(컨테이너)에서 돌고, 동료 PC 의 /map 을 구독한다.
+#
+# 이 파일은 **시뮬과 무관하다**. use_sim_time 은 전부 false -- 실기에는 /clock 이 없다
+# (실측 확인: 도메인 25 에 /clock 토픽 0 개).
+#
+# map_server 는 띄우지 않는다. 동료 PC 의 /map 이 transient local 이라 늦게 붙어도 받는다.
+# controller_server 와 bt_navigator 도 띄우지 않는다 -- 그 둘은 goal 이 없어도
+# /cmd_vel 발행자를 만들어, 실기에서 "발행자 1개" 조건을 깬다.
+#
+# 토픽·노드 이름 충돌 없음 (2026-10-02 실측): 동료 쪽에 /global_costmap* 토픽 0 개,
+# planner_server / lifecycle_manager_nav 노드 0 개.
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.25
+      downsample_costmap: false
+      downsampling_factor: 1
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      # SmacPlanner2D 는 방향을 내지 않는다. 전방향 베이스라 필요 없고, 마지막 접근
+      # 방향을 강제하면 목표마다 제자리 회전이 하나 더 붙는다.
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      # 동료의 /mppi_static_costmap 과 같은 값이어야 계획과 회피가 같은 로봇을 가정한다.
+      robot_radius: 0.37
+      resolution: 0.05
+      global_frame: map
+      robot_base_frame: base_link
+      rolling_window: false
+      track_unknown_space: false
+      # 실시간 장애물 없음. 동료의 static costmap 과 같은 구성이고, 움직이는 장애물은
+      # /local_costmap 이 담당한다 (MPPI 가 그쪽을 따로 구독한다).
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # MPPI 가 보는 비용은 ~= exp(-cost_scaling_factor * (d - inscribed)) 이고,
+        # w_obs = 20 은 시뮬 grid.bake() 의 exp(-(d - 0.35)/0.15), 즉 유효 scale
+        # 6.67 에 맞춰 튜닝됐다. 지수를 같게 맞춰 실기 비용장을 그 필드로 만든다.
+        #
+        # 이전 값(0.40/4.0)은 기울기 폭이 0.04 m 뿐인 사실상 계단함수였고, 두 증상이
+        # 거기서 나왔다:
+        #   (a) d > 0.41 m 가 전부 비용 0 -> cost_travel_multiplier 가 죽은 항이 되어
+        #       A* 가 통로 중앙을 선호하지 않고 lethal 경계에 붙는 경로를 낸다.
+        #   (b) MPPI 는 0.41 m 안에 들어오기 전까지 벽을 못 보다가 한 스텝 만에
+        #       0 -> 0.89 -> 탈락(10.0)을 만난다. 그래서 경로와 싸운다.
+        #
+        # 대가 (합성 직선 통로에서 실제 MPPI 로 실측, 2026-10-06): 통과 가능한 통로
+        # 하한이 0.90 -> 1.05 m 로 올라간다. 0.74 m 이하는 중앙이 inscribed 안이라
+        # 양쪽 설정 모두 통과하지 못한다 (지금도 못 한다).
+        # 실기 맵에 0.90~1.05 m 필수 통로가 있으면 w_obs 를 20 -> 12 로 내려야 한다
+        # (실측: w_obs 12 면 0.90 m 복구). /map 덤프 후 판단 -- 팀 확인 대기.
+        #
+        # inflation_radius 는 lethal 셀을 만들지 않는다 (lethal 은 inscribed_radius
+        # 에서만 나온다). 따라서 **플래너의 통과 가능성 자체는 불변**이다.
+        inflation_radius: 1.05      # 비용이 0.01 로 떨어지는 거리
+        cost_scaling_factor: 6.67   # = 1/0.15, 시뮬 decay 와 동일
+      always_send_full_costmap: True
+      # update 가 publish 보다 커야 전달률이 안 깎인다 (전달률 = update / ceil(update/publish)).
+      update_frequency: 2.0
+      publish_frequency: 1.0

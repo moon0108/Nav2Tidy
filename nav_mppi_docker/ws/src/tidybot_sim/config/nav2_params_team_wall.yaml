@@ -1,0 +1,260 @@
+# nav2_params_team.yaml 의 A/B 전용 사본. **inflation_radius 만 다르다.**
+#
+# 실기 이전 값(0.40)을 재현한다: inscribed 0.37 에서 0.41 m 까지 폭 0.04 m 의 사실상
+# 계단함수이고, 그래서 (a) 플래너에 통로 중앙 선호가 없어 경로가 lethal 경계에 붙고
+# (b) MPPI 가 0.41 m 안에 들어오기 전까지 벽을 못 본다. "벽에 붙은 경로" 조건이다.
+#
+# Biased-MPPI A/B 의 off-wall / on-wall 설정에서만 쓴다
+# (ros2 launch ... team_params:=nav2_params_team_wall.yaml).
+# 원본을 임시로 고치지 않기 위해 사본으로 둔다 -- 고치면 A/B 중간에 중단될 때
+# 원본이 틀린 값으로 남는다.
+# controller:=team 전용 파라미터. nav2/mppi 기준선은 nav2_params.yaml 을 그대로 쓴다.
+#
+# 파일을 나눈 이유는 team 모드가 **다른 로봇 설정**이기 때문이다. 세 값이 동시에
+# 어긋난다: local costmap 의 global_frame(map vs odom), global costmap 의 plugins
+# (실시간 장애물 유무), robot_radius(0.37 vs 0.35). 한 파일에서 모드별로 바꾸는
+# 방법은 이 프로젝트에서 둘 다 막혔다 -- RewrittenYaml 은 키 이름으로 파일 전체를
+# 바꾸고(publish_frequency 로 당했다), launch 의 dict 파라미터는 서버의 하위 costmap
+# 노드에 닿지 않는다. 파일을 나누면 기준선이 구조적으로 드리프트할 수 없다.
+#
+# 실측 출처: SLAM 팀 인터페이스 문서 2026-10-02.
+
+# ── map ──────────────────────────────────────────────────────────────────────
+map_server:
+  ros__parameters:
+    use_sim_time: True
+    yaml_filename: ""          # launch 가 덮어쓴다
+
+# ── static costmap 겸 A* 용 ──────────────────────────────────────────────────
+# 실기의 /mppi_static_costmap/costmap 에 해당한다. 토픽 이름만 다르다
+# (/global_costmap/costmap) -- Costmap2DROS 가 부모의 리매핑을 물려받지 않아
+# planner_server 쪽에서는 이름을 바꿀 수 없다. MPPI 는 이 이름을 파라미터로 받는다.
+#
+# A* 와 MPPI 가 **같은 costmap** 을 본다. 계획과 회피가 다른 반경을 쓰는 일이 없다.
+planner_server:
+  ros__parameters:
+    use_sim_time: True
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.25
+      downsample_costmap: false
+      downsampling_factor: 1
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: True
+      # 실기 static 은 1 Hz. update 가 publish 보다 커야 전달률이 안 깎인다
+      # (10/10 -> 5 Hz 로 반토막 나는 것을 실측했다).
+      update_frequency: 2.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      robot_radius: 0.37          # SLAM 팀 실측. 기준선은 0.35 (nav2_params.yaml)
+      resolution: 0.05
+      track_unknown_space: false  # 실기 미관측 셀은 0 으로 온다
+      rolling_window: false
+      # **실시간 장애물 없음.** 실기 static costmap 과 같은 구성이다. 움직이는
+      # 장애물은 local 이 담당한다.
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.40      # A/B 전용: 실기 이전 값
+        cost_scaling_factor: 4.0
+      # MPPI 는 _updates 를 구독하지 않는다. 실기 static 이 full map 으로 오므로
+      # 같은 전제로 맞춘다.
+      always_send_full_costmap: True
+
+# ── local costmap (standalone nav2_costmap_2d) ───────────────────────────────
+# 노드 이름이 /costmap/costmap 으로 고정이라 파라미터 경로가 costmap.costmap 이다
+# (__ns 와 __node 리매핑은 무시된다. 토픽 리매핑만 통한다).
+# launch 가 토픽을 /local_costmap/costmap 으로 리매핑한다.
+costmap:
+  costmap:
+    ros__parameters:
+      use_sim_time: True
+      # 실기 설정 5 Hz (실측 ~3 Hz). 전달률을 깎지 않으려고 update 를 2배로 둔다.
+      update_frequency: 10.0
+      publish_frequency: 5.0
+      # 실기에 odom 프레임이 없다. rolling window 를 map 프레임에서 돌린다.
+      global_frame: map
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 8                    # 8.0 x 8.0 m, 로봇 중심
+      height: 8
+      resolution: 0.05
+      robot_radius: 0.37
+      track_unknown_space: false
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        # 시뮬은 2D LaserScan, 실기는 3D voxel(/cloud_registered_body)이다.
+        # 센서 사각지대와 높이 정보가 재현되지 않는다 -- ARCHITECTURE.md 참조.
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.40      # A/B 전용: 실기 이전 값
+        cost_scaling_factor: 4.0
+      always_send_full_costmap: True
+
+# ── 액션 프론트엔드 ──────────────────────────────────────────────────────────
+# controller:=team 에서만 읽는다. 액션 프론트엔드(navigate_to_goal.py)가 이 이름으로
+# 노드를 띄우고, 여기 값을 executor.py 의 PARAMS 로 선언한다. 로봇 자체의 값(반경,
+# 허용오차, NO_PROGRESS, 기본 timeout)은 여기가 아니라 demo.yaml 에 있다 - 그쪽이
+# 팀과 공유하는 파일이기 때문이다.
+navigate_to_goal:
+  ros__parameters:
+    use_sim_time: True
+
+    # 팀 저장소 configs/robot/demo.yaml 의 경로. 상대경로면 이 패키지 share/config 에서
+    # 찾는다. 원본을 받으면 절대경로로 바꾸면 된다.
+    robot_config: demo.yaml
+
+    # 로드한 지도의 판본. goal.map_version 과 다르면 reason=2 로 거절한다. 계산 방식이
+    # 바뀌어도 코드가 안 바뀌도록 값으로 주입한다 - 지금은
+    # sha256(tidy.pgm + tidy.yaml) 앞 8자이고, gen_world.py 가 채운다.
+    map_version: ''
+
+    # == 1 / MPPIConfig.dt. step() 이 호출마다 워밍스타트를 dt 만큼 밀기 때문에
+    # 이보다 빨리 풀면 지평선이 타버린다. 노드가 assert 로 검증한다.
+    solve_frequency: 10.0
+    publish_frequency: 30.0     # cmd_vel. solve 사이에는 마지막 명령을 유지하며 재회전
+
+    global_frame: map           # path, costmap, goal 이 전부 이 프레임
+    base_frame: base_link
+    # 속도 추정 전용. map->base_link 에 섞이는 ICP 보정 점프를 피한다.
+    velocity_frame: camera_init
+    # 실기 static 은 /mppi_static_costmap/costmap 이다. 시뮬에서는 planner_server 의
+    # global_costmap 이 그 역할을 한다 -- Costmap2DROS 가 부모의 리매핑을 물려받지
+    # 않아 이름을 바꿀 수 없어서다. 실기 연결 시 이 한 줄만 바꾸면 된다.
+    static_costmap_topic: /global_costmap/costmap
+    local_costmap_topic: /local_costmap/costmap
+
+    # 입력 감시. 수락 직후 input_wait 안에 TF, static, local 이 모두 유효하지 않으면
+    # 정지 후 abort 한다 (TF 없음 -> reason 7, costmap 없음 -> reason 8).
+    # 그 뒤로는 각 stale 임계가 다스리고, reason 과 detail 형식은 같다.
+    input_wait: 2.0
+    static_stale: 3.0           # 1 Hz 발행이므로 3 회 결손
+    local_stale: 1.0            # 5 Hz 설정(실측 ~3)이므로 3~5 회 결손
+    cmd_vel_topic: /cmd_vel
+
+    # NO_INFORMATION(-1) 처리. global_costmap 은 track_unknown_space: true 라
+    # 실제로 -1 이 온다. 'free' 인 이유는 탐색 시스템이 가려는 곳이 바로 미탐색
+    # 영역이기 때문이다 - 'lethal' 로 두면 로봇이 미탐색 영역에 영영 못 들어간다.
+    unknown: free               # free | lethal
+
+    lookahead_dist: 0.75        # 경로 위 carrot 거리
+    goal_switch_dist: 0.75      # 이 아래로는 carrot 이 목표점 자체가 된다
+
+    # 지도에 없는 장애물이 경로 위에 있을 때, carrot 을 앞으로 건너뛸 수 있는 최대
+    # 경로 길이. 0.35 m 상자의 경로상 차단 구간이 약 1.1 m 이므로 2.0 m 면 넘긴다.
+    # 후보는 '자유 + 로봇과 같은 8-연결 성분'이어야 채택된다 -- 거리만 보면 벽
+    # 너머의 자유 경로점을 집는다 (벽의 차단 구간 0.94 m 도 2.0 m 안이다).
+    carrot_skip_max: 2.0
+    # BLOCKED(4) 를 내는 두 조건이 공유한다: 전 rollout 이 lethal, 또는 carrot 후보가
+    # carrot_skip_max 안에 없음. 구분은 detail 문자열이 한다.
+    blocked_time: 3.0
+
+    # STOPPING. 베이스가 속도원이라 발행 명령의 램프가 곧 감속이다.
+    decel_limit: 1.0            # m/s^2, rad/s^2
+    # 속도는 TF pose 차분으로만 잰다. /odom 의 twist 는 쓰지 않는다 - 실제
+    # FAST-LIO 가 twist 를 채우지 않으므로, 그걸 쓰면 시뮬에서만 동작하는 정지
+    # 판정이 된다. 창 자체가 필터다: 10 Hz 입력이면 0.3 s 안에 표본 3개.
+    # 창 안 표본이 2개 미만이거나 최신 표본이 창보다 오래되면 속도는 '모름'이고,
+    # 모르면 정지 판정을 통과시키지 않는다.
+    vel_window: 0.3             # s
+    stop_speed: 0.02            # m/s
+    stop_yaw_rate: 0.05         # rad/s. 제자리 회전을 정지로 오판하지 않게 따로 둔다
+    stop_hold: 0.2              # s. 이만큼 연속으로 둘 다 아래여야 '정지'로 본다
+    stop_timeout: 3.0           # s. 넘으면 stopped=false 로 정직하게 보고한다
+
+    blocked_time: 2.0           # s. 전 rollout 이 lethal 인 상태가 이만큼 지속되면 BLOCKED
+    tf_timeout: 0.5             # s. TF 가 이보다 오래되면 LOCALIZATION_LOST
+
+    # 회전 모드. 새 비용 항이 아니라 같은 항의 다른 무게다 (nav/mppi.py set_weights).
+    # w_goal 이 위치를 붙들고 w_head 가 돌린다.
+    rot_w_head: 40.0
+    rot_w_goal: 60.0
+
+    viz: true                   # rollout / 최적 궤적 마커
+    viz_samples: 24
+    # goal 하나당 results/<log_prefix>_<시각>.csv 로 스트리밍 기록한다. launch 가
+    # localization 값을 prefix 로 넣어주므로 gt 와 fastlio_mock 실행이 파일명으로
+    # 구분된다.
+    log_timing: true
+    log_prefix: team
+
+    # 액션 프론트엔드. 여기부터는 navigate_to_goal.py 만 읽는다.
+    action_name: /athome/navigate_to_goal
+    heartbeat_topic: /athome/executor/heartbeat
+    # 2 s 이상 끊기면 정지 후 abort(reason=8). 0 이면 감시를 끈다 - heartbeat 를
+    # 보내지 않는 `ros2 action send_goal` 로 손으로 찔러볼 때만 쓴다.
+    heartbeat_timeout: 2.0
+    feedback_frequency: 10.0    # 스펙 요구는 5 Hz 이상
+
+    # MPPIConfig 스칼라 필드 덮어쓰기. 비우면 nav/mppi.py 의 측정된 기본값.
+    mppi_overrides: ''
+
+# localization:=fastlio_mock 에서만 읽는다. 실제 FAST-LIO 를 붙이면 이 노드는 통째로
+# 빠지므로, 여기 값은 "실제 인터페이스를 흉내 내는 설정"이지 로봇 설정이 아니다.
+
+# ── FAST-LIO 대역 ────────────────────────────────────────────────────────────
+fastlio_mock:
+  ros__parameters:
+    use_sim_time: True
+
+    # SLAM 팀 실측 (2026-10-02). body -> base_link 가 (-0.321, -0.023, -0.401) 이므로
+    # base_link 기준 body 는 그 역인 이 값이다. 회전은 0.
+    mount_xyz: [0.321, 0.023, 0.401]
+    mount_rpy: [0.0, 0.0, 0.0]
+
+    rate: 10.0                  # Livox Mid-360 스캔마다 = 약 10 Hz
+
+    # 위치 소실 테스트. drop_after 초부터 drop_duration 초 동안 발행을 끊는다.
+    # 0 이면 비활성. 둘 중 하나를 런타임에 `ros2 param set` 으로 바꾸면 그 순간부터
+    # 시계가 다시 돌기 시작한다 - 주행 도중에 끊으려면 그 방법을 쓴다.
+    drop_after: 0.0
+    drop_duration: 0.0
+
+    map_frame: map
+    camera_init_frame: camera_init
+    imu_frame: body            # 실기 FAST-LIO 의 자식 프레임 이름
+    base_frame: base_link
+
+    # map -> camera_init 을 10 Hz 동적 TF 로 낸다 (실기의 transform_fusion 자리).
+    # 값은 항등이지만 '동적'이라는 사실이 TF 조회의 공통 시각을 바꾸므로, 그 조건을
+    # 재현하려고 켜 둔다. false 면 static 한 번 발행.
+    dynamic_map_tf: true
+    # true 면 /initialpose 를 받기 전까지 map -> camera_init 을 내지 않는다.
+    # 그동안 map->base_link 가 끊겨 있어, goal 을 보내면 LOCALIZATION_LOST 로 끝난다.
+    require_initialpose: false
+    initialpose_topic: /initialpose
+    odom_topic: /odom           # Gazebo ground truth 베이스 pose (입력)
+    odometry_topic: /Odometry   # FAST-LIO 가 내는 것과 같은 이름 (출력)
