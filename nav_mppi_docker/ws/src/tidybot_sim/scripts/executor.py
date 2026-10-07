@@ -80,7 +80,10 @@ LOG_FIELDS = ['t', 'phase', 'x', 'y', 'th', 'ux', 'uy', 'uw', 'v_meas', 'w_meas'
               # 모드 평균화 판정은 |w_sneg - w_spos| 가 작으면서 ||u|| 도 작은 tick 을
               # 세는 것이다 -- 두 측면 후보가 비기면 갱신이 그 평균이라 지령이 줄어든다.
               'w_gauss', 'w_path', 'w_sneg', 'w_spos',
-              'is_gauss', 'is_path', 'is_sneg', 'is_spos']
+              'is_gauss', 'is_path', 'is_sneg', 'is_spos',
+              # 블록별 lethal 마스킹 비율. Sum(w)=0 이 비용 패배인지 전원 탈락인지
+              # 가른다 -- 그것 없이 ancillary 의 0 을 비용 패배로 잘못 읽었다.
+              'hit_gauss', 'hit_path', 'hit_sneg', 'hit_spos']
 
 # step() 이 돈 tick 에만 의미가 있는 필드. solve 없이 행이 나가면 **직전 tick 의 값**이
 # 실려 조용히 틀린 진단이 된다. eta/lam/n_hit/fallback 도 같은 성질인데 지금까지
@@ -91,7 +94,8 @@ DIAG_FIELDS = ('eta', 'lam', 'n_hit', 'fallback',
                'best_goal', 'best_obs', 'best_head', 'best_ctrl',
                'w_fwd', 'w_left', 'w_back', 'w_right', 'yaw_err', 'yaw_ref', 'obs_ref',
                'w_gauss', 'w_path', 'w_sneg', 'w_spos',
-               'is_gauss', 'is_path', 'is_sneg', 'is_spos')
+               'is_gauss', 'is_path', 'is_sneg', 'is_spos',
+               'hit_gauss', 'hit_path', 'hit_sneg', 'hit_spos')
 EMPTY_DIAG = {k: '' for k in DIAG_FIELDS}
 
 # 기본값이 **없는** 필수 파라미터. 파라미터 파일이 안 들어오면 노드가 기동 단계에서
@@ -755,13 +759,16 @@ class Executor:
         if mp.last_terms is not None:
             bi, tm = mp.last_best, mp.last_terms
             # 그룹 칸. biased off (또는 _ancillary 가 None) 이면 w_gauss 만 채운다.
-            grp = {f'{q}_{n}': '' for q in ('w', 'is') for n in ('path', 'sneg', 'spos')}
+            grp = {f'{q}_{n}': '' for q in ('w', 'is', 'hit')
+                   for n in ('path', 'sneg', 'spos')}
             grp['w_gauss'] = round(mp.last_w_groups[0], 3)
             grp['is_gauss'] = round(mp.last_is_groups[0], 1)
+            grp['hit_gauss'] = round(mp.last_hit_groups[0], 3)
             for q, n in enumerate(('path', 'sneg', 'spos'), start=1):
                 if q < len(mp.last_w_groups):
                     grp[f'w_{n}'] = round(mp.last_w_groups[q], 3)
                     grp[f'is_{n}'] = round(mp.last_is_groups[q], 1)
+                    grp[f'hit_{n}'] = round(mp.last_hit_groups[q], 3)
             self._diag = dict(
                 eta=round(mp.last_eta, 1), lam=round(float(mp.lam), 4),
                 n_hit=mp.last_n_hit, fallback=int(mp.last_fallback),
@@ -922,10 +929,15 @@ class Executor:
             self._goal = None
         self._close_log()
 
-    # 경로 최근접점을 전진시킬 때 보는 창. 매 스텝 전체 재탐색은 700 점 x 25 스텝이라
-    # 비싸고, 경로가 자기 자신에 가까워지는 구간에서 뒤로 집을 수도 있다.
-    ANC_WINDOW = 40
     ANC_K_YAW = 1.0              # rad/s per rad. 포화는 _limit 이 맡는다
+
+    @staticmethod
+    def _at_arc(path, arc, s):
+        """호 길이 s 지점의 경로 좌표 (선형 보간)."""
+        s = min(max(s, 0.0), float(arc[-1]))
+        k = min(max(int(np.searchsorted(arc, s)), 1), len(path) - 1)
+        f = (s - arc[k - 1]) / max(float(arc[k] - arc[k - 1]), 1e-9)
+        return path[k - 1] + f * (path[k] - path[k - 1])
 
     def _ancillary(self, x, g, wp, yaw_ref):
         """Biased-MPPI 보조 제어열 (3, T, 3): 경로 추종, side-, side+. 또는 None.
@@ -961,28 +973,39 @@ class Executor:
         def omega(th):
             return float(np.clip(self.ANC_K_YAW * wrap(yaw_ref - th), -w_max, w_max))
 
-        # (a) 경로 추종. 호 길이를 미리 누적해 두면 lookahead 찾기가 O(log n) 이다.
+        # (a) 경로 추종. **호 길이를 따라 전진한다.**
+        #
+        #     lookahead 점으로 직선 진행하면 매 스텝 예측 위치에서 lookahead 를 다시
+        #     잡아 경로의 곡률을 가로지르고 **코너를 깎는다**. 실측 (clutter 정체 시점,
+        #     라이브 max(static, local) grid): 경로 자체의 최대 비용 0.500, 로봇->캐럿
+        #     직선은 lethal 0/40 인데 **롤아웃만 lethal 7/25** 로 기둥 0.30 m 안에
+        #     들어갔다 (inscribed 0.37). 그래서 ancillary 21 개가 전원 탈락해
+        #     Sum(w) = 0.000 이 되고 biasing 이 아무 효과도 내지 못했다 -- 그때
+        #     n_hit 이 2 -> 65 (= 블록 크기 63) 로 뛴 것이 유일한 단서였다.
+        #     호 길이로 전진하면 롤아웃이 구성상 경로 위에 놓인다
+        #     (수정 후 lethal 0/25, 지령 0.010 -> 0.372 m/s).
         #
         #     목표 근처에서 감속한다: v = min(v_nom, |goal - p| / t_settle).
         #     t_settle = T * dt = 2.5 s, 즉 **지평선 그 자체**다. 새 상수를 만들지 않는
         #     유일한 선택이고, 뜻이 명확하다 -- "지평선이 끝날 때 목표에 닿는 속도".
         #     이게 없으면 열이 목표를 지나쳐 계속 달리고, 지평선의 남은 구간이 목표를
-        #     넘어선 궤적을 평가하는 데 쓰인다. v_nom = 0.2 에서 감속은 0.5 m 부터
-        #     시작하고 (goal_switch_dist 0.75 m 바로 안쪽), 0.25 m 에서 0.1 m/s 다.
+        #     넘어선 궤적을 평가하는 데 쓰인다.
         t_settle = T * dt
         arc = np.concatenate([[0.0],
                               np.linalg.norm(np.diff(path, axis=0), axis=1).cumsum()])
         p, th = x[:2].astype(float).copy(), float(x[2])
-        i = self._nearest(p, path)
+        s_arc = float(arc[self._nearest(p, path)])
         for t in range(T):
-            hi = min(i + self.ANC_WINDOW, len(path))
-            i += int(np.argmin(np.linalg.norm(path[i:hi] - p, axis=1)))
-            j = min(int(np.searchsorted(arc, arc[i] + self.p['lookahead_dist'])),
-                    len(path) - 1)
-            d = path[j] - p
-            nd = float(np.linalg.norm(d))
             v_cap = min(v_nom, float(np.linalg.norm(g['xy'] - p)) / t_settle)
-            v = v_cap * d / nd if nd > 1e-6 else np.zeros(2)
+            s_arc = min(s_arc + v_cap * dt, float(arc[-1]))
+            d = self._at_arc(path, arc, s_arc) - p
+            nd = float(np.linalg.norm(d))
+            # 로봇이 경로에서 벗어나 있으면 d 가 한 스텝 거리보다 멀다. 그때는
+            # 방향만 쓰고, 가까우면 d/dt 로 그 점에 정확히 올려놓는다.
+            v = d / dt if nd <= v_cap * dt * 1.5 else v_cap * d / nd
+            n = float(np.linalg.norm(v))
+            if n > v_nom:
+                v = v * (v_nom / n)        # 벡터 스케일. v = v_nom 은 스칼라 대입 버그다
             w = omega(th)
             out[0, t] = (v[0], v[1], w)
             p = p + v * dt
