@@ -72,6 +72,9 @@ LOG_FIELDS = ['t', 'phase', 'x', 'y', 'th', 'ux', 'uy', 'uw', 'v_meas', 'w_meas'
               'w_fwd', 'w_left', 'w_back', 'w_right',
               # yaw_err 는 비용에 들어간 오차, yaw_ref 는 그 기준값 자체다.
               'yaw_err', 'yaw_ref', 'w_odom', 'tf_age',
+              # 목표 셀 기준 단측 벌점의 기준선. 램프가 실제로 걸렸는지 로그로
+              # 확인할 수 없으면 이 수정의 효과를 측정할 수 없다.
+              'obs_ref',
               # Biased-MPPI 샘플 블록별 Sum(w) 와 IS 항 평균. biased 가 꺼져 있거나
               # _ancillary 가 None 을 내면 w_gauss 만 1.0 이고 나머지는 빈 칸이다.
               # 모드 평균화 판정은 |w_sneg - w_spos| 가 작으면서 ||u|| 도 작은 tick 을
@@ -86,7 +89,7 @@ LOG_FIELDS = ['t', 'phase', 'x', 'y', 'th', 'ux', 'uy', 'uw', 'v_meas', 'w_meas'
 DIAG_FIELDS = ('eta', 'lam', 'n_hit', 'fallback',
                'c_robot', 'c_wp', 'c_seg_max', 'lam_hit', 'S_min', 'S_p50', 'S_max',
                'best_goal', 'best_obs', 'best_head', 'best_ctrl',
-               'w_fwd', 'w_left', 'w_back', 'w_right', 'yaw_err', 'yaw_ref',
+               'w_fwd', 'w_left', 'w_back', 'w_right', 'yaw_err', 'yaw_ref', 'obs_ref',
                'w_gauss', 'w_path', 'w_sneg', 'w_spos',
                'is_gauss', 'is_path', 'is_sneg', 'is_spos')
 EMPTY_DIAG = {k: '' for k in DIAG_FIELDS}
@@ -720,8 +723,33 @@ class Executor:
         c_seg = float(self.grid.lookup(seg).max())
 
         self._diag = None
+        # 목표 셀 기준 단측 벌점. 목표가 장애물 가까이 있으면 그 셀의 비용이 목표
+        # 유인을 이겨 MPPI 가 목표에 **들어가지 않는 것이 최적**이 된다. 실측
+        # (2026-10-07, 목표 (9.0, 4.3), 벽에서 0.50 m, inflation 1.05/6.67):
+        #   목표 셀 비용 0.418 -> 장애물 항 8.4/step,  목표 항 15*0.23 = 3.45/step
+        #   -> 로봇이 목표 0.23 m 앞에서 10 s 얼어붙고 no_progress 로 끝났다.
+        #
+        # goal_switch_dist(D) 안에서 기준선을 0 -> c_goal 로 올린다. 계단으로 올리면
+        # 전환 지점에서 비용이 튀고 그 불연속이 warm start 를 타고 지평선 안으로 밀려
+        # 들어오므로, 거리에 따라 램프한다.
+        #
+        # **램프 모양이 임계 조건을 정한다.** 선형(ref = c_goal (1 - d/D))이면 목표
+        # 셀의 잔여 벌점이 w_obs c_goal d/D 이고 목표 유인이 w_goal d 라, 둘 다 d 에
+        # 비례해서 d 가 약분된다:
+        #       목표가 이긴다  <=>  c_goal < w_goal * D / w_obs = 15*0.75/20 = 0.5625
+        # 즉 거리와 무관하게 '되거나 안 되거나'이고, c_goal 0.5625 (= 벽에서 0.457 m)
+        # 보다 가까운 목표는 상한과 무관하게 여전히 얼어붙는다. ANC_* 와 달리 이것은
+        # 튜닝값이 아니라 두 가중치의 비에서 나오는 값이다.
+        # 그래서 램프는 D/2 에서 c_goal 에 **완전히 도달**하게 둔다 -- d < D/2 에서
+        # 잔여 벌점이 정확히 0 이 되어 목표 유인이 무조건 이긴다.
+        # 상한 1.0 은 inflation 띠의 최댓값이다: lethal 셀은 할인하지 않는다.
+        c_goal = min(float(self.grid.lookup(g['xy'][None])[0]), 1.0)
+        D = self.p['goal_switch_dist']
+        obs_ref = c_goal * min(1.0, max(0.0, 2.0 * (1.0 - d_goal / D)))
+
         anc = self._ancillary(x, g, wpa, yaw_ref) if self.p['biased'] else None
-        u = self.mppi.step(x, wp, goal_theta=yaw_ref, cost_volume=None, ancillary=anc)
+        u = self.mppi.step(x, wp, goal_theta=yaw_ref, cost_volume=None,
+                           ancillary=anc, obs_ref=obs_ref)
         t2 = time.perf_counter()
         mp = self.mppi
         if mp.last_terms is not None:
@@ -748,7 +776,7 @@ class Executor:
                 w_fwd=round(mp.last_w_bins[0], 3), w_left=round(mp.last_w_bins[1], 3),
                 w_back=round(mp.last_w_bins[2], 3), w_right=round(mp.last_w_bins[3], 3),
                 yaw_err=round(wrap(x[2] - yaw_ref), 4), yaw_ref=round(yaw_ref, 4),
-                **grp)
+                obs_ref=round(obs_ref, 4), **grp)
         with self.lock:
             self._u = u
 
@@ -765,11 +793,23 @@ class Executor:
         # within no_progress_time. Measured on the path, not on the straight
         # line, so rounding a corner still counts as progress.
         rem = self._remaining(x[:2], g['path'])
-        if g['prog_d'] is None or rem < g['prog_d'] - self.robot['no_progress_distance']:
+        if g['prog_d'] is None:
             g['prog_d'], g['prog_t'] = rem, elapsed
-        elif (elapsed - g['prog_t'] > self.robot['no_progress_time']
-              and not self._waiting_for_dynamic()):
-            return self._stop('no_progress')
+        else:
+            # 요구 거리는 **창 시작 시 남은 거리의 절반**을 넘지 않는다. 고정 0.5 m 는
+            # 목표 0.5 m 안에서 원리적으로 만족될 수 없다 -- 남은 거리가 그보다 작으니
+            # 아무리 잘 가도 0.5 m 를 줄일 수 없고, 최종 접근이 no_progress_time 을
+            # 넘기면 무조건 죽는다. 시뮬에서 목표 0.23 m 앞에 멈춘 run 이 그렇게 끝났다.
+            # (실기 30 회의 no_progress 9 건은 전부 rem >= 1.45 m 에서 끝났으므로 그쪽
+            #  실패의 원인은 아니다 -- 별개의 死구간이다.)
+            # 절반씩 줄어 수렴한다: rem 0.23 -> need 0.115 -> 그 거리는 xy_tolerance
+            # 0.15 안이라 reached 가 먼저 난다.
+            need = min(self.robot['no_progress_distance'], 0.5 * g['prog_d'])
+            if rem < g['prog_d'] - need:
+                g['prog_d'], g['prog_t'] = rem, elapsed
+            elif (elapsed - g['prog_t'] > self.robot['no_progress_time']
+                  and not self._waiting_for_dynamic()):
+                return self._stop('no_progress')
 
         if self.p['viz']:
             self._draw()
