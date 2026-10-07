@@ -93,9 +93,16 @@ navigate_to_goal:
     # 쪽이 맞다. 전환을 접근 구간에 펴는 블렌딩은 다음 배치 후보다.
     heading_ref: path
     tangent_span: 0.30          # m, 접선을 재는 현의 길이 (격자 6 칸)
-    # Biased-MPPI (arXiv:2401.09241). A/B 전까지 끈다. 꺼져 있으면 MPPI 가 비트
-    # 단위로 예전과 같은 결과를 낸다 (nav/tests/test_mppi.py 가 골든으로 고정).
-    biased: false
+    # Biased-MPPI (arXiv:2401.09241). 시뮬 A/B 96 에피소드 (2026-10-07) 로 채택했다:
+    #   도달 15/18 -> 18/18,  t_solve p50 16.4 -> 15.1 s,  접선 yaw 3.3 -> 2.9 deg
+    #   clutter(명목해가 막히는 유일한 시나리오) 0/3 -> 3/3, 정체 6.5 s -> 0 s
+    # 대가: mppi_ms p50 +1.8 ms (예산 100 ms), ω jerk **max** 2.15 -> 3.92
+    #       (p95 는 0.67 -> 0.71 로 불변 -- 드문 스파이크다, 아래 참조).
+    #
+    # 기구는 간헐적으로 작동한다. w_path 의 p50 은 0.031 뿐이지만 w_path > 0.05 인
+    # tick 이 40 % 이고 최대 0.471 이다 -- 비용이 오르는 구간마다 ancillary 가
+    # 명목해를 전진 쪽으로 밀고, 쉬운 구간은 warm start 가 운반한다.
+    biased: true
     anc_ramp_frac: 0.5
     # ω 추종 진단 전용. '' 이면 구독하지 않는다.
     odom_topic: ''
