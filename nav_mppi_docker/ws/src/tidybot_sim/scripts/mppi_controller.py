@@ -70,15 +70,26 @@ def override(cfg, spec):
     crashes numpy on a shape argument. nav.sweep has this logic already, but
     importing it drags in nav.runner and with it MuJoCo, which is not in this
     image. v_max and sigma are tuples that sweep cannot reach either: v_max_xy
-    sets v_max's first two (an actuator limit, not a cost weight), sigma_v the
-    translational sampling std and sigma_w the rotational one.
+    sets v_max's first two and v_max_wz the third (actuator limits, not cost
+    weights), sigma_v the translational sampling std and sigma_w the rotational
+    one.
+
+    v_max_wz 는 무선 경유 실기 테스트에서 회전 속도를 낮추려고 추가했다. TF 가 최대
+    1.65 s 묵는 구간이 있는데 1.0 rad/s 면 그 사이 95 도가 돈다.
     """
     types = {f.name: f.type for f in fields(MPPIConfig)}
-    kw, xy, sig = {}, None, {}
+    kw, xy, wz, sig = {}, None, None, {}
     for item in spec.split():
         k, _, v = item.partition('=')
-        if k == 'v_max_xy':
-            xy = float(v)
+        if k in ('v_max_xy', 'v_max_wz'):
+            # 0 이하는 거부한다. 0 을 넣으면 로봇이 영영 못 움직이는데, 그것이
+            # 의도인 경우는 없고 오타일 가능성이 높다.
+            f = float(v)
+            assert f > 0, f'{k} must be > 0, got {f}'
+            if k == 'v_max_xy':
+                xy = f
+            else:
+                wz = f
             continue
         if k in ('sigma_v', 'sigma_w'):
             sig[k] = float(v)
@@ -91,7 +102,13 @@ def override(cfg, spec):
     if sig:
         sv, sw = sig.get('sigma_v', cfg.sigma[0]), sig.get('sigma_w', cfg.sigma[2])
         cfg = replace(cfg, sigma=(sv, sv, sw))
-    return replace(cfg, v_max=(xy, xy, cfg.v_max[2])) if xy is not None else cfg
+    # None 여부로 판단한다. `or` 를 쓰면 0 을 넣었을 때 기본값으로 되돌아가 버린다
+    # (지금은 0 을 거부하므로 증상이 안 보이지만, 거부를 푸는 순간 조용히 틀린다).
+    if xy is None and wz is None:
+        return cfg
+    v0 = cfg.v_max[0] if xy is None else xy
+    v2 = cfg.v_max[2] if wz is None else wz
+    return replace(cfg, v_max=(v0, v0, v2))
 
 
 def yaw_of(q):

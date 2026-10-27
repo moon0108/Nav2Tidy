@@ -20,7 +20,16 @@ planner_server:
       tolerance: 0.25
       downsample_costmap: false
       downsampling_factor: 1
-      allow_unknown: true
+      # 지도 바깥(건물 외부)이 모름(-1)으로 들어와 있고, 벽 틈에서 빈 칸이 모름 칸과
+      # 바로 맞닿은 곳이 있다. true 면 A* 가 그 틈으로 새어 건물 밖을 지나는 경로를
+      # 낸다 (탐색 담당 보고, 2026-10-28). MPPI 쪽 unknown: free 는 **그대로 둔다** --
+      # SLAM 지도에는 관측됐지만 안 찍힌 칸이 있고, 그것을 lethal 로 보면 MPPI 가
+      # 그 자리에서 얼어붙는다. 경로가 모름 칸을 지나지 않으면 MPPI 도 거기 안 간다.
+      #
+      # 대가: 지도 내부에 모름 칸이 끼인 좁은 통로에서 계획이 실패할 수 있다. 조용히
+      # 실패하지는 않는다 -- mock_explorer 는 '경로 계획 실패 -> goal 을 보내지 않는다'
+      # 를 찍고, 탐색 서버는 /compute_path_to_pose 의 abort 를 받는다.
+      allow_unknown: false
       max_iterations: 1000000
       max_on_approach_iterations: 1000
       max_planning_time: 2.0
@@ -77,4 +86,15 @@ global_costmap:
       always_send_full_costmap: True
       # update 가 publish 보다 커야 전달률이 안 깎인다 (전달률 = update / ceil(update/publish)).
       update_frequency: 2.0
-      publish_frequency: 1.0
+      # 한 장이 748 x 1318 셀 = 약 0.94 MB 다 (always_send_full_costmap 이므로 매번 전량).
+      # 탐색 담당이 자기 planner_server 를 끄고 이 토픽을 Wi-Fi 건너로 구독하기로 했다
+      # (2026-10-28). 1.0 Hz 면 그것만으로 0.94 MB/s 이고, 지금 링크 전체가 약
+      # 0.24 MB/s 다 (동료 static 0.16 + local 0.08) -- 4 배가 된다. 그 링크는 이미
+      # 로밍으로 2 초씩 끊기고, 10/26 미도달 10 건 중 3 건이 그 끊김이었다.
+      #
+      # 구조물 지도라 내용이 바뀌지 않으므로 다시 보낼 이유가 없다. always_send_full_costmap
+      # 을 False 로 돌리는 쪽은 안 된다 -- 우리 MPPI 가 .../costmap_updates 를 구독하지
+      # 않아서 첫 장 이후로 굶는다. 그래서 주기를 낮추는 것이 맞는 레버다.
+      # 구독자는 transient local 로 받으면 붙는 즉시 한 장을 받는다. 우리 static_stale
+      # 은 30.0 이고 판정도 메시지 stamp 가 아니라 수신 시각으로 하므로 여유가 크다.
+      publish_frequency: 0.2

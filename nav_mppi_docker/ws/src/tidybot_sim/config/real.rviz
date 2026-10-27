@@ -1,0 +1,112 @@
+# 실기 dry-run 용 RViz 설정. scripts/check_team_dryrun.md 참조.
+#   rviz2 -d <share>/tidybot_sim/config/real.rviz
+#
+# "2D Goal Pose" -> /goal_pose -> mock_explorer --listen-goal-pose 가 받는다.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded: ~
+      Splitter Ratio: 0.5
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+Visualization Manager:
+  Class: ""
+  Name: root
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 40
+      Color: 160; 160; 164
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+      Marker Scale: 0.5
+    # 동료 PC 의 정적 지도
+    - Class: rviz_default_plugins/Map
+      Name: map
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+      Color Scheme: map
+      Alpha: 0.7
+    # 동료 PC 의 static costmap (MPPI 입력)
+    - Class: rviz_default_plugins/Map
+      Name: static costmap
+      Enabled: true
+      Topic:
+        Value: /mppi_static_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+      Color Scheme: costmap
+      Alpha: 0.4
+    # 동료 PC 의 local costmap (MPPI 입력, 8x8 m rolling)
+    - Class: rviz_default_plugins/Map
+      Name: local costmap
+      Enabled: true
+      Topic:
+        Value: /local_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+      Color Scheme: costmap
+      Alpha: 0.6
+    # 내 planner 가 만든 경로
+    - Class: rviz_default_plugins/Path
+      Name: plan
+      Enabled: true
+      Topic:
+        Value: /plan
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        Depth: 5
+      Color: 0; 255; 0
+      Line Style: Lines
+      Alpha: 1
+    # MPPI 의 rollout 과 최적 궤적
+    - Class: rviz_default_plugins/MarkerArray
+      Name: mppi rollouts
+      Enabled: true
+      Topic:
+        Value: /navigate_to_goal/rollouts
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        Depth: 1
+      Namespaces: {}
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+    - Class: rviz_default_plugins/Measure
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 20
+      Focal Point: {X: 0, Y: 0, Z: 0}
+      Pitch: 1.4
+      Yaw: 1.5
+      Target Frame: <Fixed Frame>
+    Saved: ~
+Window Geometry:
+  Height: 900
+  Width: 1400
+  Displays: {collapsed: false}

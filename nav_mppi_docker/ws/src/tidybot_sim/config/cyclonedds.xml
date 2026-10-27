@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  CycloneDDS 튜닝. 격리와는 무관하다. 격리는 compose.yaml 의 ROS_LOCALHOST_ONLY 가
+  맡고, 이 파일은 참가자 수 한계 하나를 푸는 것이 전부다.
+
+  기본 MaxAutoParticipantIndex 는 9 라서 호스트와 도메인당 참가자가 10 개로 묶인다.
+  CycloneDDS 는 참가자마다 포트 두 개를 index 순서로 잡고, 그 범위를 다 쓰면
+  rmw_create_node: failed to create domain 으로 노드가 죽는다.
+
+  controller:=team 은 노드가 9 개라 턱걸이로 들어갔지만, controller:=nav2 와
+  controller:=mppi 는 13~14 개라 그대로 실패했다 (측정). 팀 로봇도 노드가 많으면
+  같은 벽을 만난다.
+
+  참고: XML 주석 안에는 하이픈 두 개를 연달아 쓸 수 없다. 이 프로젝트의 월드 SDF 에서
+  같은 것에 한 번 당했다.
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <Discovery>
+      <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

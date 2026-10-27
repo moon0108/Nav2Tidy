@@ -1,0 +1,30 @@
+# 팀 저장소 configs/robot/demo.yaml 의 로컬 사본.
+#
+# 원본이 오면 이 파일을 지우고 경로 파라미터(navigate_to_goal.robot_config)를 원본으로
+# 돌린다. 여기 있는 값은 팀 값이 아니라 "시뮬에서 재현되는 값"이다.
+#
+# gen_world.py 가 이 파일을 nav2_params.yaml / MPPIConfig 와 대조한다. 어긋나면 월드
+# 생성이 실패한다 -- 두 세계가 다른 로봇을 가정한 채 벤치마크가 돌아가는 것보다 낫다.
+
+# SLAM 팀 실측 (2026-10-02). team 모드 전용이며 nav2_params_team.yaml 의 두 costmap과
+# 같은 값이어야 한다 -- gen_world.py 가 대조한다.
+#
+# 기준선(nav2/mppi)은 scene.ROBOT_RADIUS = 0.35 를 그대로 쓴다. 두 값이 다른 것은
+# 의도된 것이다: 기준선 벤치마크는 0.35 로 inflation 을 구운 costmap 에서 측정됐고,
+# 거기에 0.37 을 적용하면 그 숫자가 무효가 된다.
+robot_radius: 0.37            # m
+
+# 도착 판정. xy 와 yaw 를 동시에 본다. nav2_params.yaml 의 general_goal_checker 와
+# 같은 값이어야 두 모드의 "도착"이 같은 뜻이 된다.
+xy_tolerance: 0.15            # m
+yaw_tolerance: 0.25           # rad
+
+# NO_PROGRESS. 이 시간 동안 남은 거리가 이 거리만큼도 줄지 않으면 실패로 본다.
+# 임시값이다 -- 팀 실제 값 확인 필요.
+no_progress_time: 10.0        # s
+no_progress_distance: 0.5     # m
+
+# TIMEOUT. goal 의 timeout_sec 이 0 이면 이 값을 쓴다. 회전은 제자리에서 최대 pi 를
+# 도는 일이라 30 s 면 v_max[2]=1.0 rad/s 기준 열 배 여유다.
+timeout_drive: 180.0          # s
+timeout_rotate: 30.0          # s

@@ -8,6 +8,33 @@ services:
     network_mode: host
     ipc: host
     environment:
+      # 네트워크 격리. network_mode: host 라 컨테이너의 DDS 가 그대로 호스트의 LAN
+      # 인터페이스로 나간다 -- 팀 로봇이 같은 망에 있으면 시뮬의 /cmd_vel 이 실제
+      # 로봇에 닿는다. 아래 두 줄이 그것을 막는 장벽이고, docker exec 로 들어오는 모든
+      # 셸이 상속하도록 Dockerfile 이 아니라 여기에 둔다.
+      #
+      #   ROS_LOCALHOST_ONLY=1  소켓을 127.0.0.1 에만 묶는다. 솔로/팀 양쪽에서 유지한다.
+      #                         푸는 순간 DDS 가 LAN 으로 직접 나가 브리지 필터를 우회한다.
+      #                         PC 간 통신은 오직 브리지(zenoh)로만 한다.
+      #   ROS_DOMAIN_ID=42      팀은 25 를 쓴다. 솔로를 다른 도메인에 두어, 격리가
+      #                         실수로 빠져도 로봇과 같은 그래프에 붙지 않게 한다.
+      #                         팀 연결 시에만 25 로 올린다 (scripts/env_team.sh).
+      - ROS_LOCALHOST_ONLY=1
+      - ROS_DOMAIN_ID=42
+      #   IGN_IP=127.0.0.1      Gazebo 는 DDS 가 아니라 ign-transport 로 따로 디스커버리를
+      #                         한다. ROS_LOCALHOST_ONLY 는 그것을 막지 못해서, 이게 없으면
+      #                         WiFi 인터페이스가 239.255.0.7:11317 멀티캐스트 그룹에
+      #                         가입한다 (측정: 스택을 띄우면 wlo1/docker0/br-* 세 곳에
+      #                         생기고, 끄면 사라진다). 같은 망의 다른 Gazebo 와 토픽이
+      #                         섞인다.
+      - IGN_IP=127.0.0.1
+      #   CYCLONEDDS_URI        참가자 수 한계만 푼다 (기본 9 -> 호스트당 10개).
+      #                         nav2/mppi 스택은 노드가 13~14개라 이게 없으면
+      #                         rmw_create_node 가 실패한다. 소스 트리 경로를 쓰는 이유는
+      #                         ws 가 bind mount 라 빌드 전에도 존재하기 때문이다.
+      - CYCLONEDDS_URI=file:///home/moon/ws/src/tidybot_sim/config/cyclonedds.xml
+      # zenoh-bridge-ros2dds 바이너리 경로. 팀 연결 때만 쓴다. 빌드 방법은 ARCHITECTURE.md.
+      - ZENOH_BRIDGE=${ZENOH_BRIDGE:-}
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
       - PYTHONPATH=/home/moon/tidybot2

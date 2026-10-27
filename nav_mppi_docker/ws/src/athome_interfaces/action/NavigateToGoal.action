@@ -1,0 +1,40 @@
+# 임시 정의 -- 팀 원문 수령 시 교체. 필드 이름은 스펙과 정확히 일치하고,
+# 타입은 추정이다. 이름이 맞으면 타입이 바뀌어도 고칠 곳은
+# navigate_to_goal.py 의 변환 함수 두 개뿐이다.
+
+# ── Goal ─────────────────────────────────────────────────────────────────────
+# 탐색 시스템이 Nav2 planner 로 A* 경로를 받아 그대로 실어 보낸다. goal 과 path 는
+# 같은 프레임(map)이어야 한다.
+string request_id
+geometry_msgs/PoseStamped goal          # 목표 위치와 yaw
+nav_msgs/Path path                      # A* 전역 경로. 한 점이면 제자리 회전
+string map_version                      # 로드한 지도와 다르면 MAP_MISMATCH
+float64 xy_tolerance                    # 0 이면 demo.yaml 의 기본값
+float64 yaw_tolerance                   # 0 이면 demo.yaml 의 기본값
+float64 timeout_sec                     # 0 이면 demo.yaml 의 drive/rotate 기본값
+---
+# ── Result ───────────────────────────────────────────────────────────────────
+# status 0 은 금지다: 기본값 0 이 "성공"으로 읽히는 사고를 막기 위해 1 부터 쓴다.
+uint8 STATUS_SUCCEEDED=1
+uint8 STATUS_FAILED=2
+uint8 STATUS_CANCELED=3
+
+uint8 REASON_NONE=0
+uint8 REASON_MAP_MISMATCH=2
+uint8 REASON_BLOCKED=4
+uint8 REASON_NO_PROGRESS=5
+uint8 REASON_TIMEOUT=6
+uint8 REASON_LOCALIZATION_LOST=7
+uint8 REASON_INTERNAL=8
+
+uint8 status
+uint8 reason
+geometry_msgs/PoseStamped final_pose
+bool stopped                            # 로봇이 실제로 멈춘 뒤에만 true. 측정값이다
+string detail
+---
+# ── Feedback ─────────────────────────────────────────────────────────────────
+# 5 Hz 이상으로 보낸다.
+geometry_msgs/PoseStamped current_pose
+float64 remaining_distance              # 직선이 아니라 경로 위로 잰 남은 거리
+string phase                            # ACCEPTED | DRIVING | ROTATING | STOPPING

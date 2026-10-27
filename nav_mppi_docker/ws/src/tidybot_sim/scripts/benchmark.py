@@ -172,21 +172,9 @@ class Bench(Node):
         return out
 
 
-def ensure_router():
-    """Start the zenoh router if none is running. Without it every node comes up and
-    none sees another; the first symptom is a 90 s wait for a /clock that never
-    arrives. A container restart takes the router with it and nothing brings it
-    back. Only started when absent - a second router fights the first."""
-    if subprocess.run(['pgrep', '-f', 'rmw_zenohd'], capture_output=True).returncode == 0:
-        return
-    print('  no zenoh router running; starting one', flush=True)
-    subprocess.Popen(['ros2', 'run', 'rmw_zenoh_cpp', 'rmw_zenohd'],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    time.sleep(3)
-
-
 def launch(controller, overrides='', gui=False):
-    ensure_router()
+    # CycloneDDS 는 라우터가 없다. rmw_zenoh 를 쓰던 동안에는 여기서 rmw_zenohd 를
+    # 띄워 주어야 했고, 없으면 노드들이 서로를 못 보고 /clock 을 90 초 기다리다 죽었다.
     # Clear the bus first. Anything already running - a stack from an ad-hoc
     # probe, a crashed run - puts a second controller, a second bridge and a
     # second robot on it, and every number measured on top is void. It has

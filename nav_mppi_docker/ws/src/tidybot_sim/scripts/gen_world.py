@@ -14,6 +14,8 @@ that pinches a gap below it fails here instead of stranding an episode later.
 from pathlib import Path
 from xml.dom import minidom
 
+import hashlib
+import math
 import yaml
 
 import numpy as np
@@ -145,6 +147,23 @@ def write_map_yaml(path, image, res, origin):
     return path
 
 
+def write_map_version(path, pgm, yml):
+    """sha256(pgm + yaml)[:8] -> a file the launch passes to the navigator.
+
+    The team's NavigateToGoal carries map_version so a stale path can be
+    rejected (reason=2, MAP_MISMATCH). It is written to a file rather than into
+    nav2_params.yaml because that file is hand-maintained and a yaml round-trip
+    would eat its comments; it is computed here because this is the only place
+    that knows the map was just regenerated. Change the recipe and nothing else
+    changes: the node only ever compares two strings.
+    """
+    h = hashlib.sha256()
+    for f in (pgm, yml):
+        h.update(Path(f).read_bytes())
+    path.write_text(h.hexdigest()[:8] + chr(10))
+    return h.hexdigest()[:8]
+
+
 def check_params(path):
     """nav2_params.yaml repeats numbers owned by nav/scene.py and MPPIConfig.
 
@@ -199,6 +218,61 @@ def check_params(path):
           f'solve {mc["solve_frequency"]} Hz, goal {gc["xy_goal_tolerance"]} m')
 
 
+
+def check_team(base, team):
+    """team 모드의 값들이 서로 맞는지 본다. 기준선과는 **다른 로봇 설정**이므로
+    scene.ROBOT_RADIUS 와 비교하지 않는다 -- 0.37 과 0.35 가 다른 것은 의도다."""
+    from nav.mppi import MPPIConfig
+    cfg = MPPIConfig()
+    t = yaml.safe_load(team.read_text())
+    demo = yaml.safe_load((base.parent / 'demo.yaml').read_text())
+
+    static = t['global_costmap']['global_costmap']['ros__parameters']
+    local = t['costmap']['costmap']['ros__parameters']
+    ntg = t['navigate_to_goal']['ros__parameters']
+
+    # 반경 세 벌(demo.yaml, static, local)이 어긋나면, 계획과 회피가 서로 다른
+    # 로봇을 가정한 채 돈다.
+    for name, got in (('static costmap', static['robot_radius']),
+                      ('local costmap', local['robot_radius'])):
+        assert got == demo['robot_radius'], \
+            f"{name}.robot_radius {got} != demo.yaml {demo['robot_radius']}"
+
+    # 두 costmap 의 inflation 이 다르면 같은 셀이 서로 다른 cost 로 읽힌다.
+    for key in ('inflation_radius', 'cost_scaling_factor'):
+        assert static['inflation_layer'][key] == local['inflation_layer'][key], \
+            f"inflation_layer.{key} static {static['inflation_layer'][key]} != " \
+            f"local {local['inflation_layer'][key]}"
+
+    # inflation 이 반경보다 작으면 inscribed 띠가 inflation 밖으로 비어져 나온다.
+    assert static['inflation_layer']['inflation_radius'] >= demo['robot_radius'], \
+        f"inflation_radius {static['inflation_layer']['inflation_radius']} < " \
+        f"robot_radius {demo['robot_radius']}"
+
+    # 시나리오 도달성은 PLAN_CLEARANCE 로 검사한다(check 함수). 그 여유가 team 반경
+    # 보다 커야 그 검사 결과가 team 모드에도 유효하다.
+    assert scene.PLAN_CLEARANCE >= demo['robot_radius'], \
+        f"PLAN_CLEARANCE {scene.PLAN_CLEARANCE} < team robot_radius " \
+        f"{demo['robot_radius']}; 시나리오 도달성 검사가 team 모드를 보장하지 못한다"
+
+    assert abs(ntg['solve_frequency'] - 1.0 / cfg.dt) < 1e-9, \
+        f"navigate_to_goal.solve_frequency {ntg['solve_frequency']} != 1/MPPIConfig.dt {1 / cfg.dt}"
+
+    # planner 가 목표에서 이만큼 떨어진 경로를 돌려줘도, carrot 이 목표로 바뀌는
+    # 거리 안이어야 로봇이 끝까지 간다.
+    ptol = t['planner_server']['ros__parameters']['GridBased']['tolerance']
+    assert ptol < ntg['goal_switch_dist'], \
+        f"planner tolerance {ptol} >= goal_switch_dist {ntg['goal_switch_dist']}"
+
+    assert demo['timeout_rotate'] * cfg.v_max[2] > 2 * math.pi, \
+        f"timeout_rotate {demo['timeout_rotate']} s cannot cover a turn at v_max {cfg.v_max[2]} rad/s"
+
+    print(f"  team: r={demo['robot_radius']} (기준선 {scene.ROBOT_RADIUS}), "
+          f"inflation={static['inflation_layer']['inflation_radius']}, "
+          f"solve {ntg['solve_frequency']} Hz, "
+          f"tol=({demo['xy_tolerance']} m, {demo['yaw_tolerance']} rad)")
+
+
 def check(*paths):
     """A* feasibility of every start/goal pair, plus XML well-formedness.
 
@@ -233,8 +307,12 @@ def main():
                          scene.GRID_RES, scene.GRID_ORIGIN)
     print(f'{len(scene.WALLS)} boxes -> {sdf}')
     print(f'{g.occ.shape} grid -> {pgm}, {yml}')
+    ver = write_map_version(PKG / 'maps' / 'tidy.version', pgm, yml)
+    print(f'map_version {ver}')
     check(sdf, PKG / 'urdf' / 'tidybot.urdf')
     check_params(PKG / 'config' / 'nav2_params.yaml')
+    check_team(PKG / 'config' / 'nav2_params.yaml',
+               PKG / 'config' / 'nav2_params_team.yaml')
     print('all scenarios reachable')
 
 

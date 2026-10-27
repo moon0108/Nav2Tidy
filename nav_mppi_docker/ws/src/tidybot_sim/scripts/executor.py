@@ -133,6 +133,16 @@ PARAMS = [
     # 입력 감시. 수락 직후 input_wait 안에 TF, static, local 이 모두 유효하지 않으면
     # 정지 후 abort 한다. 그 뒤로는 각 stale 임계가 다스린다. 조용히 기다리다
     # TIMEOUT 으로 끝나는 경로를 없애는 것이 목적이다.
+    # costmap stale 로 죽을 때 같은 tick 의 tf_age 가 이 값을 넘으면 internal 이 아니라
+    # localization_lost 로 보고한다. 둘은 무선 링크가 끊기면 **함께** 죽는데, local
+    # costmap 이 3 Hz 라 정상 상태에서도 0.33 s 밀려 있어 local_stale 이 tf_timeout 보다
+    # 항상 먼저 터진다 (실측 3/3: 그 시점 tf_age 1.438 / 1.626 / 1.728 로 2.0 미달).
+    # 그러면 위치 상실이 영영 costmap 문제로 보고되고, 클라이언트의 '위치 상실은 사람이
+    # 확인' 규칙에 걸리지 않는다. tf_timeout 을 재분류 임계로 쓸 수는 없다 -- 그 경계에서
+    # _pose() 가 이미 None 을 내므로 재분류가 발동할 창이 없다. 0.5 는 측위 담당이 권고한
+    # 값이고, 0.5 s 넘게 새 TF 가 없는 상태는 실제로 위치를 잃은 것이다.
+    # 0 이면 재분류하지 않는다 = 이전과 같은 reason. 실기 프로필만 옵트인한다.
+    ('tf_stale_hint', 0.0),             # s (실기 0.5)
     # NO_INFORMATION (-1) handling. 'free' matches the costmap's own
     # default_value and the global path has already vetted the topology;
     # 'lethal' is the conservative reading for a map with real unknown space.
@@ -142,7 +152,15 @@ PARAMS = [
     # STOPPING. decel_limit ramps the published command; the base is a velocity
     # source, so the ramp IS the deceleration. stop_speed/stop_hold are read
     # against /odom's twist.
-    ('decel_limit', 1.0),               # m/s^2 and rad/s^2 on the published command
+    ('decel_limit', 1.0),               # m/s^2 on the published command
+    # 각속도는 따로 둔다. 하나로 묶으면 1.0 rad/s^2 로 램프하는데, 램프가 ω 에서 0
+    # 까지 쓸어내는 각도는 ω^2/(2*decel) 이라 실측 ω 0.341 rad/s 에서 3.33 deg 가 된다.
+    # 탐색 회전의 허용 오차가 +-5.3 deg (= FOV 70.6 와 60 deg 간격의 겹침 절반) 이므로
+    # 그 하나로 예산의 63 % 를 쓴다. 베이스의 각가속 한계는 3.14 rad/s^2 이고, 3.0 이면
+    # 같은 ω 에서 1.11 deg 로 떨어진다. 선형은 건드리지 않는다 -- 병진 글라이드는
+    # xy_tolerance 0.15 m 안에 이미 들어온다.
+    # 0 이면 decel_limit 을 쓴다 = 이전과 완전히 같은 동작. 실기 프로필만 옵트인한다.
+    ('decel_limit_w', 0.0),             # rad/s^2 on the published command; 0 -> decel_limit
     # 속도는 TF pose 차분으로 잰다. /odom 의 twist 는 쓰지 않는다 -- FAST-LIO 가
     # twist 를 채우지 않으므로, 그걸 쓰면 시뮬에서만 동작하는 정지 판정이 된다.
     # 창 자체가 필터다: 10 Hz 입력이면 0.3 s 안에 표본 3개가 들어온다.
@@ -161,6 +179,15 @@ PARAMS = [
     # position (the goal IS the current position), w_head does the turning.
     ('rot_w_head', 40.0),
     ('rot_w_goal', 60.0),
+    # 최종 접근 ω 캡. MPPI 는 목표 yaw 근처에서 감속하지 않는다 -- 멈추기로 결정하는
+    # 순간에도 ω 가 순항에 붙어 있다 (실측: 마지막 uw 0.341 vs 순항 0.357). 허용 오차가
+    # 14.3 deg 일 때는 드러나지 않았지만 5.3 deg 에서는 결정 이후 쓸어내는 각도가
+    # 예산을 넘긴다. 그 각도는 램프 ω^2/(2*decel_limit_w) 와 판정 지연 ω*0.17 의 합이고
+    # (0.17 s = TF 전송 0.07 + tick 0.1), ω 를 0.20 으로 묶으면 0.38 + 1.95 = 2.3 deg 다.
+    # 둘 중 하나라도 0 이면 캡을 끄고 이전과 완전히 같게 동작한다. 실기 프로필만
+    # 옵트인한다 -- 시뮬 A/B 의 저장된 결과와 비교 가능해야 한다.
+    ('yaw_approach', 0.0),              # rad, 이 안에서 캡을 건다 (실기 0.26 = 약 15 deg)
+    ('w_approach', 0.0),                # rad/s, 그 구간의 |ω| 상한 (실기 0.20)
     ('viz', True),                      # rollout/best-trajectory markers
     ('viz_samples', 24),
     ('log_timing', True),
@@ -670,9 +697,21 @@ class Executor:
                     'localization_lost',
                     f"TF {self.p['global_frame']}->{self.p['base_frame']} 없음 또는 "
                     f"{self.p['tf_timeout']}s 초과")
-            return self._stop('internal', '; '.join(
-                f'{n} costmap {topic} ' + ('수신 이력 없음' if age is None else f'{age:.1f}s 경과')
-                for n, topic, age in bad))
+            # costmap stale. detail 에 bad_inputs **전부**와 그 tick 의 tf_age 를 같이
+            # 싣는다. 하나만 실으면 사후에 'TF 도 같이 죽었는가'를 가릴 수 없다 --
+            # 무선 링크가 끊기면 둘은 함께 죽는다 (실측 3/3).
+            detail = '; '.join(
+                [f'{n} costmap {topic} '
+                 + ('수신 이력 없음' if age is None else f'{age:.1f}s 경과')
+                 for n, topic, age in bad]
+                + [f'tf_age {self._tf_age:.2f}s'])
+            # 그 tf_age 가 tf_stale_hint 를 넘었으면 costmap 문제가 아니라 위치 상실로
+            # 보고한다 (tf_stale_hint 주석). x is not None 이므로 _pose() 가 방금
+            # _tf_age 를 갱신했고, tf_timeout 미달이라 여기까지 온 것이다.
+            hint = self.p['tf_stale_hint']
+            if hint > 0.0 and self._tf_age > hint:
+                return self._stop('localization_lost', detail)
+            return self._stop('internal', detail)
         with self.lock:
             self._pose_xy_th = x
         t1 = time.perf_counter()
@@ -784,6 +823,27 @@ class Executor:
                 w_back=round(mp.last_w_bins[2], 3), w_right=round(mp.last_w_bins[3], 3),
                 yaw_err=round(wrap(x[2] - yaw_ref), 4), yaw_ref=round(yaw_ref, 4),
                 obs_ref=round(obs_ref, 4), **grp)
+
+        # 최종 접근 ω 캡. rotating 에서만 건다 -- 그때만 yaw_ref == g['yaw'] 이고
+        # (wp_yaw 가 None 이므로) 남은 일이 'yaw 를 착지시키는 것' 하나다. driving 에
+        # 걸면 안 된다: heading_ref='path' 에서 |yaw_err| 가 작은 것은 '거의 다 왔다'가
+        # 아니라 **접선 추종이 잘 되고 있다**는 뜻이고 (실측 p50 7.8 deg), 거기서 ω 를
+        # 0.20 으로 묶으면 0.4 m/s 에서 최소 선회반경이 2.0 m 가 되어 코너를 못 돈다.
+        # xy 도달 후 heading 만 남은 drive goal 도 _set_mode('rotating') 를 지나므로
+        # 이 조건 하나로 두 경우를 다 덮는다.
+        #
+        # u 는 self.U[0].copy() (또는 _sgf 경로의 새 배열)라 내부 상태와 별칭이 아니므로
+        # 여기서 깎아도 warm start 는 깨지지 않는다. 다만 MPPI 는 캡을 **모른다**:
+        # u_prev / u_hist 에는 깎기 전 값이 남고, 다음 tick 에도 같은 ω 를 제안한다.
+        # 상태는 매 tick TF 에서 다시 잡으므로 수렴은 하고, 깎는 방향이 항상 0 쪽이라
+        # 오버슈트로 갈 수 없다 -- 느려질 뿐이다. rd_w (ω rate 비용)를 켜는 날에는
+        # u_prev 가 실제 지령과 어긋나므로 그때 같이 봐야 한다. 지금은 rd_w = 0 이다.
+        # v_max_wz 를 런타임에 낮춰 MPPI 가 스스로 지키게 하는 쪽이 깔끔하지만
+        # mppi.py 를 건드린다.
+        wa, wc = self.p['yaw_approach'], self.p['w_approach']
+        if (self.phase == 'rotating' and wa > 0.0 and wc > 0.0
+                and abs(wrap(x[2] - yaw_ref)) < wa):
+            u[2] = float(np.clip(u[2], -wc, wc))
         with self.lock:
             self._u = u
 
@@ -851,11 +911,15 @@ class Executor:
 
         if state == STOPPING:
             # Ramp, do not snap. The base is a velocity source, so the ramp is
-            # the deceleration the spec asks for.
+            # the deceleration the spec asks for. 병진과 회전은 **다른 한계**를 쓴다:
+            # 공용 step 이면 회전이 1.0 rad/s^2 로 램프해 ω^2/(2*1.0) = 3.33 deg 를
+            # 쓸어내고, 탐색 회전의 +-5.3 deg 예산을 혼자 다 먹는다 (decel_limit_w 주석).
             step = self.p['decel_limit'] / self.p['publish_frequency']
+            step_w = (self.p['decel_limit_w'] or self.p['decel_limit']) \
+                / self.p['publish_frequency']
             n = float(np.linalg.norm(u[:2]))
             u[:2] = u[:2] * (max(0.0, n - step) / n) if n > 1e-9 else 0.0
-            u[2] = math.copysign(max(0.0, abs(u[2]) - step), u[2])
+            u[2] = math.copysign(max(0.0, abs(u[2]) - step_w), u[2])
             self._check_stopped()
         elif state == IDLE:
             u[:] = 0.0
@@ -878,6 +942,46 @@ class Executor:
             msg.linear.y = float(s * u[0] + c * u[1])
             msg.angular.z = float(u[2])
         self.cmd_pub.publish(msg)
+        if state != RUNNING:
+            self._log_row(u, x)
+
+    def _log_row(self, u, x):
+        """STOPPING tick 한 행. _solve 는 state != RUNNING 이면 첫 줄에서 리턴하므로
+        여기서 쓰지 않으면 정지 구간이 로그에 **전혀** 남지 않는다. 그러면 정지 후
+        실제 yaw, stopped=true 까지 걸린 시간, 정지 상태의 속도 잡음 바닥 -- 회전
+        정확도를 약속하는 데 필요한 세 값 전부를 측정할 수 없다.
+
+        RUNNING 중에는 _solve 가 쓰므로 여기서 쓰지 않는다. 둘 다 같은 10 Hz 라
+        그러지 않으면 모든 행이 두 번 들어간다.
+
+        MPPI 진단 열은 EMPTY_DIAG 로 비운다 -- solve 가 돌지 않은 tick 이고, 그
+        계약(DIAG_FIELDS 주석)에 yaw_err/yaw_ref 도 들어간다. 그래서 정착 yaw 오차는
+        여기서 쓰지 않고 분석에서 만든다: 이 행의 th 와, solve 가 마지막으로 남긴
+        행의 yaw_ref 의 차다 (rotating phase 에서는 yaw_ref == goal 의 yaw 다).
+
+        _check_stopped() 가 이 tick 에 _finish() 를 불렀다면 로그가 이미 닫혀 있어
+        마지막 한 행(0.1 s)은 빠진다. 그 시점 ω 는 이미 0 이라 yaw 는 변하지 않는다.
+        """
+        if self._csv is None:
+            return
+        with self.lock:
+            g = self._goal
+        if g is None:
+            return
+        v = self._velocity()
+        self._csv.writerow(dict(
+            t=round((self.node.get_clock().now() - g['t0']).nanoseconds / 1e9, 4),
+            phase=self.phase,
+            x='' if x is None else round(x[0], 4),
+            y='' if x is None else round(x[1], 4),
+            th='' if x is None else round(x[2], 4),
+            ux=round(u[0], 4), uy=round(u[1], 4), uw=round(u[2], 4),
+            v_meas='' if v is None else round(v[0], 4),
+            w_meas='' if v is None else round(v[1], 4),
+            heading_ref=self.p['heading_ref'],
+            tf_age=round(self._tf_age, 3),
+            **EMPTY_DIAG))
+        self._csv_f.flush()
 
     def _check_stopped(self):
         """속도는 TF 차분에서만 온다. v is None 은 '모른다'이고, 모르면 멈췄다고

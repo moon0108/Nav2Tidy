@@ -41,6 +41,12 @@ navigate_to_goal:
     tf_timeout: 2.0
     local_stale: 2.0
     static_stale: 30.0          # 구조물 지도라 내용이 안 바뀐다. 발행자 사망만 잡는다
+    # local_stale 로 죽을 때 같은 tick 의 tf_age 가 이 값을 넘으면 localization_lost 로
+    # 보고한다. local costmap 이 3 Hz 라 정상에서도 0.33 s 밀려 있어 local_stale 이
+    # tf_timeout 보다 항상 먼저 터진다 -- 2026-10-27 실기 3/3 건이 그 시점 tf_age
+    # 1.438 / 1.626 / 1.728 로 2.0 미달이라 전부 internal 로 나갔고, Wi-Fi 로밍으로
+    # 위치를 잃은 것이 costmap 문제로 보고됐다. 0.5 는 측위 담당 권고값이다.
+    tf_stale_hint: 0.5
 
     # 액션 프론트엔드
     action_name: /athome/navigate_to_goal
@@ -61,7 +67,7 @@ navigate_to_goal:
     # K 를 바꾸려면 eta_min/eta_max 도 함께 바꿔야 한다: 25.6/51.2 는 K=512 의 5~10 %
     # 로 고른 값이고, K 만 줄이면 밴드가 K 의 수십 % 가 되어 softmax 가 거의 균등해져
     # 명령이 안 나온다 (K=64 로 확인). MPPIConfig 의 assert 는 이것을 잡지 못한다.
-    mppi_overrides: "v_max_xy=0.2 v_max_wz=0.6 sigma_w=0.3 w_head=2.0"
+    mppi_overrides: "v_max_xy=0.5 v_max_wz=0.5 sigma_w=0.3 w_head=2.0"
 
     unknown: free
     lookahead_dist: 0.75
@@ -69,6 +75,19 @@ navigate_to_goal:
     carrot_skip_max: 2.0
     blocked_time: 3.0
     decel_limit: 1.0
+    # 각속도 램프는 선형과 분리한다. 공용 1.0 rad/s^2 면 램프가 ω^2/(2*1.0) 만큼 더
+    # 쓸어내고, 실측 마지막 uw 0.341 rad/s 에서 3.33 deg 다. 탐색 회전의 허용 오차가
+    # +-5.3 deg 라 그 하나로 예산의 63 % 를 쓴다. 베이스 각가속 한계 3.14 바로 아래인
+    # 3.0 으로 두면 같은 ω 에서 1.11 deg 가 된다.
+    decel_limit_w: 3.0
+    # 최종 접근 ω 캡 (rotating phase 에서만). MPPI 는 목표 yaw 근처에서 감속하지 않아
+    # 멈추기로 결정하는 순간에도 ω 가 순항에 붙어 있다 (실측 0.341 vs 순항 0.357).
+    # 결정 이후 쓸어내는 각도 = 램프 ω^2/(2*decel_limit_w) + 판정 지연 ω*0.17 이고
+    # (0.17 s = TF 전송 0.07 + tick 0.1), 캡 없이는 1.11 + 3.3 = 4.4 deg 로 여유가
+    # 0.9 deg 뿐이다. 0.20 으로 묶으면 0.38 + 1.95 = 2.3 deg. 대가는 마지막 15 deg 가
+    # 0.81 -> 1.3 s, 회전당 +0.5 s 다.
+    yaw_approach: 0.26
+    w_approach: 0.20
     stop_speed: 0.02
     stop_yaw_rate: 0.05
     stop_hold: 0.2
