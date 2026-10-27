@@ -1,112 +1,256 @@
-# 실기 dry-run 용 RViz 설정. scripts/check_team_dryrun.md 참조.
-#   rviz2 -d <share>/tidybot_sim/config/real.rviz
-#
-# "2D Goal Pose" -> /goal_pose -> mock_explorer --listen-goal-pose 가 받는다.
 Panels:
   - Class: rviz_common/Displays
+    Help Height: 70
     Name: Displays
     Property Tree Widget:
       Expanded: ~
       Splitter Ratio: 0.5
+    Tree Height: 414
   - Class: rviz_common/Tool Properties
+    Expanded: ~
     Name: Tool Properties
+    Splitter Ratio: 0.5
 Visualization Manager:
   Class: ""
-  Name: root
   Displays:
-    - Class: rviz_default_plugins/Grid
-      Name: Grid
-      Enabled: true
+    - Alpha: 0.5
       Cell Size: 1
-      Plane Cell Count: 40
+      Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 40
       Reference Frame: <Fixed Frame>
+      Value: true
     - Class: rviz_default_plugins/TF
-      Name: TF
       Enabled: true
-      Show Names: true
-      Show Axes: true
-      Show Arrows: false
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        base_link:
+          Value: true
+        body:
+          Value: true
+        camera_init:
+          Value: true
+        map:
+          Value: true
       Marker Scale: 0.5
-    # 동료 PC 의 정적 지도
-    - Class: rviz_default_plugins/Map
-      Name: map
-      Enabled: true
-      Topic:
-        Value: /map
-        Durability Policy: Transient Local
-        Reliability Policy: Reliable
-        Depth: 1
+      Name: TF
+      Show Arrows: false
+      Show Axes: true
+      Show Names: true
+      Tree:
+        map:
+          camera_init:
+            body:
+              base_link:
+                {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 0.699999988079071
+      Class: rviz_default_plugins/Map
       Color Scheme: map
-      Alpha: 0.7
-    # 동료 PC 의 static costmap (MPPI 입력)
-    - Class: rviz_default_plugins/Map
-      Name: static costmap
+      Draw Behind: false
       Enabled: true
+      Name: map
       Topic:
-        Value: /mppi_static_costmap/costmap
-        Durability Policy: Transient Local
-        Reliability Policy: Reliable
         Depth: 1
-      Color Scheme: costmap
-      Alpha: 0.4
-    # 동료 PC 의 local costmap (MPPI 입력, 8x8 m rolling)
-    - Class: rviz_default_plugins/Map
-      Name: local costmap
-      Enabled: true
-      Topic:
-        Value: /local_costmap/costmap
         Durability Policy: Transient Local
+        Filter size: 10
+        History Policy: Keep Last
         Reliability Policy: Reliable
-        Depth: 1
-      Color Scheme: costmap
-      Alpha: 0.6
-    # 내 planner 가 만든 경로
-    - Class: rviz_default_plugins/Path
-      Name: plan
-      Enabled: true
-      Topic:
-        Value: /plan
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
+        Value: /map
+      Update Topic:
         Depth: 5
-      Color: 0; 255; 0
-      Line Style: Lines
-      Alpha: 1
-    # MPPI 의 rollout 과 최적 궤적
-    - Class: rviz_default_plugins/MarkerArray
-      Name: mppi rollouts
-      Enabled: true
-      Topic:
-        Value: /navigate_to_goal/rollouts
         Durability Policy: Volatile
+        History Policy: Keep Last
         Reliability Policy: Reliable
+        Value: /map_updates
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.4000000059604645
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: static costmap
+      Topic:
         Depth: 1
-      Namespaces: {}
+        Durability Policy: Transient Local
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mppi_static_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mppi_static_costmap/costmap_updates
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.6000000238418579
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: local costmap
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap_updates
+      Use Timestamp: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: plan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: mppi rollouts
+      Namespaces:
+        {}
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /navigate_to_goal/rollouts
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+  Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
     Frame Rate: 30
+  Name: root
   Tools:
     - Class: rviz_default_plugins/MoveCamera
     - Class: rviz_default_plugins/SetInitialPose
+      Covariance x: 0.25
+      Covariance y: 0.25
+      Covariance yaw: 0.06853891909122467
       Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
         Value: /initialpose
     - Class: rviz_default_plugins/SetGoal
       Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
         Value: /goal_pose
     - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
+      Distance: 14.14250659942627
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: 0.8241783380508423
+        Y: -3.8976047039031982
+        Z: 2.591644048690796
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
       Name: Current View
-      Distance: 20
-      Focal Point: {X: 0, Y: 0, Z: 0}
-      Pitch: 1.4
-      Yaw: 1.5
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.9800002574920654
       Target Frame: <Fixed Frame>
+      Value: Orbit (rviz_default_plugins)
+      Yaw: 2.0249996185302734
     Saved: ~
 Window Geometry:
+  Displays:
+    collapsed: false
   Height: 900
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000001560000032efc0200000002fb000000100044006900730070006c006100790073010000003b0000021f000000c700fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000260000001090000005c00ffffff0000041c0000032e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Tool Properties:
+    collapsed: false
   Width: 1400
-  Displays: {collapsed: false}
+  X: 1130
+  Y: 50
