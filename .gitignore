@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 nav_mppi_docker/ws/src/tidybot_sim/results/timing_*.csv
 nav_mppi_docker/ws/src/tidybot_sim/results/launch_*.log
+.vscode/

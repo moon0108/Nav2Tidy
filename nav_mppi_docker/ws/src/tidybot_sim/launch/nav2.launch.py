@@ -68,12 +68,16 @@ def _setup(context, *_a, **_k):
     # global costmap 의 plugins, robot_radius(0.37 vs 0.35)가 동시에 다르고, 한 파일
     # 안에서 모드별로 바꾸는 방법이 이 프로젝트에서 둘 다 막혔기 때문이다. 파일이
     # 나뉘어 있으면 기준선이 구조적으로 드리프트할 수 없다.
-    # team 모드의 params 파일은 인자로 바꿀 수 있다. Biased-MPPI A/B 의 off-wall /
-    # on-wall 설정이 inflation_radius 만 다른 사본(nav2_params_team_wall.yaml)을 쓰기
-    # 위한 것이다 -- 원본을 임시로 고치면 A/B 가 중단될 때 틀린 값이 남는다.
-    team_params = LaunchConfiguration('team_params').perform(context)
-    params = str(share / 'config' /
-                 (team_params if mode == 'team' else 'nav2_params.yaml'))
+    # team 모드는 A/B 변형을 **오버레이**로 받는다. ROS 2 는 parameters 리스트에서
+    # 뒤에 온 것이 앞을 덮으므로(아래 map_yaml 과 같은 방식), 바꿀 값만 적은 파일을
+    # 얹으면 된다. 전에는 inflation 두 값만 다른 276 줄 사본을 뒀는데, 그 방식은
+    # 사본이 원본의 나머지 274 줄과 조용히 드리프트한다.
+    #   ros2 launch ... controller:=team team_overlay:=nav2_params_team_wall.yaml
+    overlay = LaunchConfiguration('team_overlay').perform(context)
+    params = [str(share / 'config' /
+                  ('nav2_params_team.yaml' if mode == 'team' else 'nav2_params.yaml'))]
+    if mode == 'team' and overlay:
+        params.append(str(share / 'config' / overlay))
     assert loc == 'gt' or mode == 'team', (
         f'localization:={loc} needs controller:=team; the nav2/mppi baselines run on '
         'Gazebo ground truth and their measured numbers assume it')
@@ -96,7 +100,7 @@ def _setup(context, *_a, **_k):
 
     nodes = [
         Node(package=pkg, executable=exe, name=exe, output='screen',
-             parameters=[params] + ([map_yaml] if exe == 'map_server' else []),
+             parameters=params + ([map_yaml] if exe == 'map_server' else []),
              remappings=(FOLLOW_PATH_AWAY
                          if mppi and exe == 'controller_server' else []))
         for pkg, exe in servers
@@ -105,15 +109,15 @@ def _setup(context, *_a, **_k):
         nodes.append(Node(
             package='tidybot_sim', executable='mppi_controller.py',
             name='mppi_controller', output='screen',
-            parameters=[params, {'mppi_overrides':
-                                 LaunchConfiguration('mppi_overrides').perform(context)}]))
+            parameters=params + [{'mppi_overrides':
+                                  LaunchConfiguration('mppi_overrides').perform(context)}]))
     elif mode == 'team':
         # map_version 은 gen_world.py 가 maps/tidy.version 에 쓴 값이다. 노드는
         # 문자열 두 개를 비교할 뿐이라, 해시 방식이 바뀌어도 코드는 그대로다.
         nodes.append(Node(
             package='tidybot_sim', executable='navigate_to_goal.py',
             name='navigate_to_goal', output='screen',
-            parameters=[params, {
+            parameters=params + [{
                 'map_version': (share / 'maps' / 'tidy.version').read_text().strip(),
                 # gt 실행과 fastlio_mock 실행의 CSV 를 파일명으로 구분한다.
                 'log_prefix': loc,
@@ -126,7 +130,7 @@ def _setup(context, *_a, **_k):
         # "발행자 1개" 조건을 깨지 않는다.
         nodes.append(Node(
             package='nav2_costmap_2d', executable='nav2_costmap_2d',
-            name='costmap', output='screen', parameters=[params],
+            name='costmap', output='screen', parameters=params,
             remappings=[('costmap', '/local_costmap/costmap'),
                         ('costmap_raw', '/local_costmap/costmap_raw'),
                         ('costmap_updates', '/local_costmap/costmap_updates')]))
@@ -153,8 +157,9 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('headless', default_value='false'),
         # team 모드 전용. 기본값이 원래 파일이라 평소 동작은 그대로다.
-        DeclareLaunchArgument('team_params', default_value='nav2_params_team.yaml',
-                              description='config/ 안의 team 모드 params 파일 이름'),
+        DeclareLaunchArgument('team_overlay', default_value='',
+                              description='team 모드에서 nav2_params_team.yaml 위에 '
+                                          '얹을 오버레이 파일 이름 (config/ 안)'),
         # One knob, three stack shapes. It stays named `controller` because
         # benchmark.py passes controller:=<name> and the two baselines must keep
         # working unchanged; `team` is the third value rather than a second

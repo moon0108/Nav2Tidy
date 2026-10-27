@@ -9,10 +9,8 @@ install(PROGRAMS scripts/stop.sh scripts/mppi_controller.py scripts/benchmark.py
         # executor.py is imported by the navigator node, not run directly. It is
         # installed next to it because ros2 run puts the executable's own
         # directory on sys.path, which is what makes `import executor` resolve.
-        scripts/executor.py scripts/navigate_to_goal.py scripts/mock_explorer.py scripts/fastlio_mock.py scripts/net_team.sh scripts/env_team.sh scripts/test_override.py scripts/test_ancillary.py
+        scripts/executor.py scripts/navigate_to_goal.py scripts/mock_explorer.py scripts/fastlio_mock.py scripts/env_team.sh scripts/test_override.py scripts/test_ancillary.py
         DESTINATION lib/${PROJECT_NAME})
-install(FILES scripts/bridge_team_sim.json5
-        DESTINATION share/${PROJECT_NAME}/config)
 install(DIRECTORY urdf launch worlds maps config DESTINATION share/${PROJECT_NAME})
 
 ament_package()
