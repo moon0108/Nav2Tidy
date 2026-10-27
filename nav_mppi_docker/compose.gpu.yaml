@@ -1,0 +1,23 @@
+# GPU 오버레이. compose.yaml 위에 얹어서 쓴다.
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d
+#
+# setup.sh 가 nvidia-container-toolkit 이 있는지 보고 자동으로 붙인다.
+#
+# 이것을 기본 compose.yaml 에 넣지 않는 이유: nvidia 장치 예약은 toolkit 이 없는
+# PC 에서 `docker compose up` 을 **실패시킨다**. GPU 없이도 돌아가야 하므로
+# (Gazebo·RViz 는 소프트웨어 렌더링으로 떨어지고, 실기 모니터링은 Gazebo 를 쓰지도
+# 않는다) 선택 사항으로 분리했다.
+services:
+  nav:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    devices:
+      # nvidia runtime 은 card2/renderD129 만 넣어 준다. Intel 노드가 없으면 Mesa 가
+      # iris 를 못 올려 Gazebo GUI 가 소프트웨어 렌더링으로 떨어진다.
+      - /dev/dri:/dev/dri
