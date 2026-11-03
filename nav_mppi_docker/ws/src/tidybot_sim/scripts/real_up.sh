@@ -9,7 +9,11 @@ set -euo pipefail
 TOPIC=/cmd_vel_dryrun
 [ "${1:-}" = "--arm" ] && TOPIC=/cmd_vel
 
+# ROS 의 setup.bash 는 nounset 에 안전하지 않다 (/opt/ros/humble/setup.bash:8 이
+# AMENT_TRACE_SETUP_FILES 를 기본값 없이 읽는다). source 구간만 -u 를 끈다.
+set +u
 . /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
+set -u
 
 # zenoh 라우터는 **동료 스택이 띄운다.** 여기서는 띄우지 않고 있는지만 본다.
 # 이 이미지의 기본 세션 설정은 mode: "peer" 지만 scouting.multicast.enabled 가
@@ -26,13 +30,24 @@ fi
 # 발행자가 있으면 (시뮬이든 다른 세션이든) 거기에 두 번째를 얹지 않는다.
 if [ "$TOPIC" = /cmd_vel ]; then
     echo "무장: $TOPIC -- /cmd_vel 발행자를 확인한다"
-    info=$(timeout 10 ros2 topic info /cmd_vel || true)
-    echo "$info"
-    pubs=$(printf '%s\n' "$info" | sed -n 's/^Publisher count: //p')
-    subs=$(printf '%s\n' "$info" | sed -n 's/^Subscription count: //p')
-    [ "${pubs:-x}" = 0 ] || {
-        echo "중단: /cmd_vel 발행자가 ${pubs:-?} 개다. 0 이어야 한다." >&2; exit 1; }
-    [ "${subs:-0}" -ge 1 ] || echo "경고: /cmd_vel 구독자가 없다 -- 로봇 드라이버가 안 떠 있다"
+    # 그래프를 못 읽는 것과 "발행자가 없다"를 구별해야 한다. ros2 topic info 는
+    # 토픽이 그래프에 아예 없으면 "Publisher count: 0" 이 아니라 **아무것도** 찍지
+    # 않아서, 출력만 보면 둘이 똑같아 보인다. 그래서 목록으로 존재를 먼저 가른다.
+    if ! topics=$(timeout 15 ros2 topic list 2>/dev/null); then
+        echo "중단: ros2 topic list 가 실패했다. 라우터와 도메인(25)을 확인해라." >&2
+        exit 1
+    fi
+    if printf '%s\n' "$topics" | grep -qx /cmd_vel; then
+        info=$(timeout 15 ros2 topic info /cmd_vel 2>/dev/null || true)
+        echo "$info"
+        pubs=$(printf '%s\n' "$info" | sed -n 's/^Publisher count: //p')
+        subs=$(printf '%s\n' "$info" | sed -n 's/^Subscription count: //p')
+        [ "${pubs:-x}" = 0 ] || {
+            echo "중단: /cmd_vel 발행자가 ${pubs:-?} 개다. 0 이어야 한다." >&2; exit 1; }
+        [ "${subs:-0}" -ge 1 ] || echo "경고: /cmd_vel 구독자가 없다 -- 로봇 드라이버가 안 떠 있다"
+    else
+        echo "경고: /cmd_vel 이 그래프에 없다 -- 로봇 드라이버가 안 떠 있다. 무장은 계속한다"
+    fi
 fi
 
 echo "launch: cmd_vel_topic:=$TOPIC"
