@@ -83,11 +83,35 @@ ros2 run tidybot_sim benchmark.py          # 세 컨트롤러 x 시나리오, re
 낸다. 이 저장소는 전역 플래너와 `/cmd_vel` 만 담당한다. 그래서 실기 모드는 상대 쪽
 스택이 떠 있어야 동작한다.
 
+### 한 줄로 띄우기
+
+받는 쪽(아래 2~3 번)을 호스트에서 한 번에 올린다. 컨테이너가 꺼져 있어도 된다:
+
+```sh
+cd Nav2Tidy/nav_mppi_docker
+./run_real.sh            # 건식 -- /cmd_vel_dryrun. 로봇은 움직이지 않는다
+./run_real.sh --arm      # 무장 -- /cmd_vel. 실제로 움직인다
+```
+
+하는 일: `docker start nav_mppi` → 컨테이너에서 `env_team.sh` source → 7447 에
+zenoh 라우터가 있는지 확인(없으면 중단) → `--arm` 이면 `/cmd_vel` 발행자가 0 인지
+확인(아니면 중단) → `ros2 launch tidybot_sim real.launch.py`. Ctrl-C 한 번으로
+planner 와 MPPI 가 함께 내려간다.
+
+목표를 **보내는** 쪽은 포함하지 않는다 -- 실기에서는 동료의 탐색 서버가 그 역할이다.
+
+### 직접 띄우기 (한 단계씩)
+
 ```sh
 # 모든 터미널 공통 -- RMW 를 zenoh 로 바꾸고 팀 도메인(25)으로 옮긴다
 source /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 
-# 1) zenoh 라우터. **정확히 한 PC 에서만** 띄운다 (포트 7447 충돌)
+# 1) zenoh 라우터. **정확히 한 곳에서만** 띄운다 (포트 7447 충돌). 보통 동료
+#    스택이 띄우므로 그때는 이 단계를 건너뛴다.
+#    PC 한 대로 돌려도 하나는 반드시 있어야 한다 -- 이 이미지의 기본 세션 설정이
+#    mode: "peer" 이지만 멀티캐스트 탐색을 끄고(scouting.multicast.enabled: false)
+#    gossip 을 라우터로만 보내서(gossip.target.peer: ["router"]), 라우터가 없으면
+#    노드끼리 서로를 못 본다. 증상은 "조용히 아무것도 안 보임"이다.
 source /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 export ZENOH_CONFIG_OVERRIDE='connect/endpoints=["tcp/<라우터IP>:7447"]'
 ros2 run rmw_zenoh_cpp rmw_zenohd
@@ -96,12 +120,19 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 source /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 ros2 launch tidybot_sim real_planner.launch.py
 
-# 3) MPPI 로컬 플래너.
+# 3) MPPI 로컬 플래너 = 목표를 **받는** 쪽 (/athome/navigate_to_goal 액션 서버).
+#    cmd_vel_topic 기본값은 /cmd_vel_dryrun 이다. 무장 전에 반드시 확인:
+#      ros2 topic info /cmd_vel    -> Publisher 0 / Subscription 1 이어야 한다
 source /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 ros2 run tidybot_sim navigate_to_goal.py --ros-args \
-  --params-file .../team_real.yaml -p cmd_vel_topic:=/cmd_vel
+  --params-file /home/moon/ws/install/tidybot_sim/share/tidybot_sim/config/team_real.yaml \
+  -p cmd_vel_topic:=/cmd_vel
 
-# 4) 목표를 보내는 쪽 (RViz 의 2D Goal Pose)
+# 4) 목표를 **보내는** 쪽. 실기에서는 동료의 탐색 서버가 이 역할이므로 띄우지 않는다.
+#    아래는 우리끼리 RViz 로 목표를 넣어볼 때만 쓴다. 둘을 같이 띄우면 한 액션
+#    서버에 클라이언트가 둘이 되어 뒤에 온 goal 이 앞의 것을 밀어낸다.
+#    heartbeat(/athome/executor/heartbeat, 2 Hz)도 이 노드가 낸다 -- 동료 쪽이
+#    보내지 않으면 goal 수락 2 s 뒤 전부 실패한다 (heartbeat_timeout: 2.0).
 source /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 ros2 run tidybot_sim mock_explorer.py --listen-goal-pose
 ```
@@ -120,6 +151,7 @@ nav_mppi_docker/
   compose.yaml            서비스 정의. GPU 없이 돌아간다
   compose.gpu.yaml        NVIDIA 오버레이 (setup.sh 가 있을 때만 붙인다)
   setup.sh                한 번에 환경 맞추기
+  run_real.sh             실기 스택을 한 줄로 (docker start + scripts/real_up.sh)
   ws/
     nav/                  MPPI 본체. 순수 numpy/scipy, ROS 비의존
       mppi.py             샘플링 MPPI (K=512, T=25). Biased sampling 포함
@@ -137,7 +169,7 @@ nav_mppi_docker/
           fastlio_mock.py       실기와 같은 TF 사슬을 시뮬에서 만든다
           benchmark.py gen_world.py
         config/           params. team_real.yaml 이 실기 프로필
-        launch/           sim / nav2 / real_planner
+        launch/           sim / nav2 / real_planner / real
         ARCHITECTURE.md   설계와 측정 기록
       athome_interfaces/  NavigateToGoal 액션 정의
 ```
