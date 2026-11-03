@@ -15,6 +15,19 @@ set +u
 . /home/moon/ws/src/tidybot_sim/scripts/env_team.sh
 set -u
 
+# install/ 은 파일 단위 심링크다 (--symlink-install). 기존 파일을 고치는 데는
+# 재빌드가 필요 없지만 **새 파일**은 한 번 빌드해야 share 에 나타난다. 안 하면
+# "file 'real.launch.py' was not found in the share directory" 로 죽는데, 그
+# 메시지만 보고 colcon build 를 떠올리기는 어렵다 -- 그래서 여기서 해 준다.
+SHARE=/home/moon/ws/install/tidybot_sim/share/tidybot_sim
+if [ ! -e "$SHARE/launch/real.launch.py" ]; then
+    echo "real.launch.py 가 install 에 없다 -- colcon build 를 한 번 돌린다"
+    (cd /home/moon/ws && colcon build --symlink-install --packages-select tidybot_sim)
+    set +u
+    . /home/moon/ws/install/setup.bash
+    set -u
+fi
+
 # zenoh 라우터는 **동료 스택이 띄운다.** 여기서는 띄우지 않고 있는지만 본다.
 # 이 이미지의 기본 세션 설정은 mode: "peer" 지만 scouting.multicast.enabled 가
 # false 이고 gossip.target.peer 가 ["router"] 라, 라우터가 없으면 PC 한 대 안에서도

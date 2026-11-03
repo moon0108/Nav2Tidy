@@ -93,10 +93,15 @@ cd Nav2Tidy/nav_mppi_docker
 ./run_real.sh --arm      # 무장 -- /cmd_vel. 실제로 움직인다
 ```
 
-하는 일: `docker start nav_mppi` → 컨테이너에서 `env_team.sh` source → 7447 에
-zenoh 라우터가 있는지 확인(없으면 중단) → `--arm` 이면 `/cmd_vel` 발행자가 0 인지
+하는 일: `docker start nav_mppi` → 컨테이너에서 `env_team.sh` source →
+`real.launch.py` 가 `install/` 에 없으면 `colcon build` 한 번 → 7447 에 zenoh
+라우터가 있는지 확인(없으면 중단) → `--arm` 이면 `/cmd_vel` 발행자가 0 인지
 확인(아니면 중단) → `ros2 launch tidybot_sim real.launch.py`. Ctrl-C 한 번으로
 planner 와 MPPI 가 함께 내려간다.
+
+`install/` 은 파일 단위 심링크다(`--symlink-install`). 그래서 기존 파일을 고치는
+데는 재빌드가 필요 없지만 **새 파일**은 한 번 빌드해야 `share` 에 나타난다 --
+클론 직후나 새 launch 파일이 들어온 뒤 첫 실행에서만 위 빌드가 돈다.
 
 목표를 **보내는** 쪽은 포함하지 않는다 -- 실기에서는 동료의 탐색 서버가 그 역할이다.
 
